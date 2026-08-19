@@ -1,0 +1,22 @@
+CompileFlags:
+  CompilationDatabase: build
+  Compiler: C:/Qt/Tools/mingw1310_64/bin/g++.exe
+  Add:
+    - --target=x86_64-w64-windows-gnu
+    - -std=c++17
+    - -DAPP_VERSION="1.0.0"
+    - -DQT_CORE_LIB
+    - -DQT_GUI_LIB
+    - -DQT_QML_LIB
+    - -DQT_QUICK_LIB
+    - -Isrc
+    - -IC:/Qt/6.8.3/mingw_64/include
+    - -IC:/Qt/6.8.3/mingw_64/include/QtCore
+    - -IC:/Qt/6.8.3/mingw_64/include/QtGui
+    - -IC:/Qt/6.8.3/mingw_64/include/QtQml
+    - -IC:/Qt/6.8.3/mingw_64/include/QtQuick
+    - -IC:/Qt/6.8.3/mingw_64/include/QtQuickControls2
+    - -IC:/Qt/6.8.3/mingw_64/include/QtMultimedia
+    - -IC:/Qt/6.8.3/mingw_64/include/QtNetwork
+    - -IC:/Qt/6.8.3/mingw_64/include/QtQmlIntegration
+    - -IC:/Qt/6.8.3/mingw_64/mkspecs/win32-g++

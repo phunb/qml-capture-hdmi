@@ -1,0 +1,19 @@
+# Ubuntu kiosk cho mini-PC (tránh bản quyền Windows)
+#
+# 1) Cài Ubuntu Server 24.04 LTS 64-bit lên mini-PC
+#    ISO: https://releases.ubuntu.com/24.04/ubuntu-24.04.4-live-server-amd64.iso
+#    Khi cài: bật OpenSSH, tạo user admin có sudo.
+#    Không cần cài Ubuntu Desktop.
+#
+# 2) Copy thư mục qml-project sang mini-PC (USB hoặc scp), rồi:
+#
+#    cd qml-project
+#    chmod +x deploy/linux/*.sh
+#    sudo ./deploy/linux/install-ubuntu-kiosk.sh
+#
+# 3) sudo reboot
+#    Máy tự login user kiosk và chạy app trong cage (không desktop).
+#
+# Video lưu: /home/kiosk/output
+# Bảo trì: ssh admin@IP
+# Gỡ autostart kiosk: sudo ./deploy/linux/uninstall-ubuntu-kiosk.sh

@@ -1,0 +1,3 @@
+# Cho phép user thuộc group video truy cập HDMI capture / V4L2
+KERNEL=="video[0-9]*", GROUP="video", MODE="0660"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="534d", GROUP="video", MODE="0660"

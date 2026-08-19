@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=HDMI Kiosk
+Comment=Live HDMI capture, record and playback
+Exec=hdmi-kiosk
+Icon=video-display
+Terminal=false
+Categories=AudioVideo;Video;
+X-GNOME-Autostart-enabled=true
+X-KDE-autostart-after=panel
+StartupNotify=false

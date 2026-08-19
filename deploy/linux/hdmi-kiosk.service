@@ -1,0 +1,15 @@
+[Unit]
+Description=HDMI Kiosk
+After=graphical-session.target
+Wants=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=hdmi-kiosk
+Restart=on-failure
+RestartSec=2
+Environment=QT_QPA_PLATFORM=xcb
+Environment=QT_MEDIA_BACKEND=ffmpeg
+
+[Install]
+WantedBy=default.target
