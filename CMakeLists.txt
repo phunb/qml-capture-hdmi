@@ -92,3 +92,10 @@ install(TARGETS hdmi-kiosk
 
 install(DIRECTORY deploy/linux DESTINATION share/hdmi-kiosk)
 install(DIRECTORY deploy/windows DESTINATION share/hdmi-kiosk)
+
+enable_testing()
+add_test(NAME smoke-load COMMAND hdmi-kiosk)
+set_tests_properties(smoke-load PROPERTIES
+    ENVIRONMENT "HDMI_KIOSK_SMOKE_TEST=1;HDMI_KIOSK_KIOSK_MODE=0;QT_QPA_PLATFORM=offscreen;HDMI_KIOSK_OUTPUT_DIR=/tmp/hdmi-output;QT_LOGGING_TO_CONSOLE=1"
+    TIMEOUT 45
+)

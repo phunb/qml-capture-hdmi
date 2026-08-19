@@ -15,6 +15,7 @@
 #include <QQuickStyle>
 #include <QStandardPaths>
 #include <QTextStream>
+#include <QTimer>
 
 namespace {
 
@@ -93,6 +94,21 @@ int main(int argc, char *argv[])
         &app,
         []() { QCoreApplication::exit(-1); },
         Qt::QueuedConnection);
+
+    if (qEnvironmentVariableIntValue("HDMI_KIOSK_SMOKE_TEST") > 0) {
+        QObject::connect(
+            &engine,
+            &QQmlApplicationEngine::objectCreated,
+            &app,
+            [&](QObject *object, const QUrl &) {
+                if (!object) {
+                    QCoreApplication::exit(1);
+                    return;
+                }
+                QTimer::singleShot(2500, &app, &QCoreApplication::quit);
+            },
+            Qt::QueuedConnection);
+    }
 
     engine.loadFromModule("HdmiKiosk", "Main");
 

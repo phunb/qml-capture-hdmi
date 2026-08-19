@@ -25,6 +25,12 @@ AppSettings::AppSettings(QObject *parent)
     : QObject(parent)
 {
     load();
+    const QString envKiosk = qEnvironmentVariable("HDMI_KIOSK_KIOSK_MODE");
+    if (!envKiosk.isEmpty()) {
+        m_kioskMode = !(envKiosk == QLatin1String("0")
+                        || envKiosk.compare(QLatin1String("false"), Qt::CaseInsensitive) == 0
+                        || envKiosk.compare(QLatin1String("off"), Qt::CaseInsensitive) == 0);
+    }
     m_recordingsDir = defaultRecordingsDir();
     QDir().mkpath(m_recordingsDir);
     save();

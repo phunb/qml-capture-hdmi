@@ -1,0 +1,13 @@
+services:
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: test
+    environment:
+      QT_QPA_PLATFORM: offscreen
+      HDMI_KIOSK_SMOKE_TEST: "1"
+      HDMI_KIOSK_KIOSK_MODE: "0"
+      HDMI_KIOSK_OUTPUT_DIR: /tmp/hdmi-output
+      LIBGL_ALWAYS_SOFTWARE: "1"
+    command: ["ctest", "--output-on-failure", "--timeout", "45"]

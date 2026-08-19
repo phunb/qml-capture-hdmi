@@ -10,8 +10,8 @@ Window {
     visible: true
     color: Theme.bg
     title: qsTr("HDMI Kiosk")
-    visibility: Window.FullScreen
-    flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+    visibility: Kiosk.locked ? Window.FullScreen : Window.Windowed
+    flags: Kiosk.locked ? (Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint) : Qt.Window
 
     property string screenName: "live"
     property bool dialogOpen: deleteDialog.opened || exitDialog.opened

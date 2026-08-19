@@ -69,13 +69,18 @@ void KioskController::applyWindowState()
     if (!m_window)
         return;
 
-    Qt::WindowFlags flags = Qt::Window | Qt::FramelessWindowHint;
-    if (m_locked)
-        flags |= Qt::WindowStaysOnTopHint;
-    m_window->setFlags(flags);
-    m_window->showFullScreen();
+    Qt::WindowFlags flags = Qt::Window;
+    if (m_locked) {
+        flags |= Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint;
+        m_window->setFlags(flags);
+        m_window->showFullScreen();
+        m_window->setKeyboardGrabEnabled(true);
+    } else {
+        m_window->setFlags(flags);
+        m_window->show();
+        m_window->setKeyboardGrabEnabled(false);
+    }
     m_window->requestActivate();
-    m_window->setKeyboardGrabEnabled(m_locked);
 }
 
 void KioskController::installOsHooks()

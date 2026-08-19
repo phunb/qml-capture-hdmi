@@ -71,6 +71,22 @@ cmake --build build -j
 
 Gói thường cần: `qt6-base`, `qt6-declarative`, `qt6-multimedia`, FFmpeg/GStreamer tùy distro.
 
+## Test trên Ubuntu 24.04 (Docker)
+
+Build và smoke-test (load QML, không cần HDMI):
+
+```bash
+docker compose run --rm test
+```
+
+Windows:
+
+```powershell
+.\scripts\docker-test.ps1
+```
+
+Image `ubuntu:24.04`, Qt 6.8, `QT_QPA_PLATFORM=offscreen`. Test `smoke-load` thoát 0 nếu cửa sổ QML tạo được.
+
 ## Chạy
 
 Chạy `hdmi-kiosk`. Cắm nguồn HDMI vào capture trước hoặc sau đều được (app theo dõi hotplug).
