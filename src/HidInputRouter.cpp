@@ -180,6 +180,9 @@ bool HidInputRouter::handleKey(QKeyEvent *event)
     case Qt::Key_Print:
         emit captureSnapshot();
         return true;
+    case Qt::Key_P:
+        emit togglePreview();
+        return true;
     case Qt::Key_L:
     case Qt::Key_F2:
         emit openLibrary();

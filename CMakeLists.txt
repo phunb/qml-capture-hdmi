@@ -48,6 +48,7 @@ qt_add_qml_module(hdmi-kiosk
         qml/PlaybackView.qml
         qml/NoSignalOverlay.qml
         qml/ControlBar.qml
+        qml/ClipPreview.qml
     SOURCES
         src/AppSettings.h
         src/AppSettings.cpp

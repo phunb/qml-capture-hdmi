@@ -37,6 +37,7 @@ signals:
     void adminExit();
     void pedalTap();
     void pedalHoldRecord();
+    void togglePreview();
 
 private:
     bool handleKey(class QKeyEvent *event);

@@ -280,7 +280,7 @@ bool CaptureController::captureSnapshot()
 
     m_recordings->notifyChanged();
     emit snapshotCaptured(path);
-    showFlash(tr("Đã chụp %1").arg(QFileInfo(path).fileName()));
+    showFlash(tr("Đã chụp"));
     return true;
 }
 
