@@ -87,7 +87,6 @@ private:
     void setError(const QString &error);
     void setRecording(bool recording);
     void onFrame(const QVideoFrame &frame);
-    bool frameLooksBlack(const QVideoFrame &frame) const;
     QString formatDuration(qint64 ms) const;
     void showFlash(const QString &message);
 
@@ -104,8 +103,6 @@ private:
     bool m_previewActive = false;
     bool m_recording = false;
     bool m_signalPresent = false;
-    bool m_blackFrames = false;
-    int m_frameCounter = 0;
     qint64 m_recordingDurationMs = 0;
     QString m_recordingPath;
     QString m_status = QStringLiteral("nodevice");

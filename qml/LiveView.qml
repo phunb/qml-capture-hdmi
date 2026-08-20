@@ -25,21 +25,53 @@ Item {
     }
 
     function moveSelection(delta) {
+        if (Library.count <= 0)
+            return
+        if (root.previewing) {
+            let idx = Library.currentIndex + delta
+            while (idx >= 0 && idx < Library.count && Library.isFolderAt(idx))
+                idx += delta
+            if (idx < 0 || idx >= Library.count)
+                return
+            Library.currentIndex = idx
+            list.positionViewAtIndex(idx, ListView.Contain)
+            playCurrentIfVideo()
+            return
+        }
         Library.moveCurrent(delta)
         list.positionViewAtIndex(Library.currentIndex, ListView.Contain)
+    }
+
+    function playCurrentIfVideo() {
+        if (!root.previewing || Library.count <= 0 || Library.currentIsFolder)
+            return
+        lastClip.crop = false
+        lastClip.muted = false
+        lastClip.resetZoom()
+        lastClip.autoPlay = !Library.currentIsImage
+        if (Library.currentIsImage)
+            lastClip.pause()
+        else
+            lastClip.play()
     }
 
     function enterPreview() {
         if (latestIndex < 0)
             return
+        selectLatest()
+        liveOutput.parent = pipLiveSlot
+        lastClip.parent = clipMainSlot
         previewing = true
-        lastClip.crop = false
-        lastClip.muted = false
-        if (!latestIsImage)
-            lastClip.play()
+        playCurrentIfVideo()
+        list.positionViewAtBeginning()
+        Qt.callLater(function() {
+            list.positionViewAtIndex(Library.currentIndex, ListView.Beginning)
+        })
     }
 
     function exitPreview() {
+        liveOutput.parent = liveMainSlot
+        lastClip.parent = clipPipSlot
         previewing = false
         lastClip.crop = true
         lastClip.muted = true
@@ -72,10 +104,12 @@ Item {
     }
 
     function seekBy(ms) {
-        if (previewing)
-            lastClip.seekBy(ms)
+        if (!root.previewing)
+            return
+        if (Library.currentIsImage)
+            lastClip.zoomBy(ms > 0 ? 0.15 : -0.15)
         else
-            moveSelection(ms > 0 ? 1 : -1)
+            lastClip.seekBy(ms)
     }
 
     function selectLatest() {
@@ -105,25 +139,21 @@ Item {
             radius: 4
         }
 
-        VideoOutput {
-            id: liveOutput
-            parent: root.previewing ? pipLiveSlot : liveMainSlot
-            anchors.fill: parent
-            fillMode: VideoOutput.PreserveAspectFit
-            Component.onCompleted: Capture.setPreviewOutput(liveOutput)
-        }
-
         Item {
             id: liveMainSlot
             anchors.fill: parent
-            visible: !root.previewing
             clip: true
+
+            VideoOutput {
+                id: liveOutput
+                anchors.fill: parent
+                fillMode: VideoOutput.PreserveAspectFit
+            }
         }
 
         Item {
             id: clipMainSlot
             anchors.fill: parent
-            visible: root.previewing
             clip: true
         }
 
@@ -198,13 +228,11 @@ Item {
             Item {
                 id: pipLiveSlot
                 anchors.fill: parent
-                visible: root.previewing
             }
 
             Item {
                 id: clipPipSlot
                 anchors.fill: parent
-                visible: !root.previewing
             }
 
             MouseArea {
@@ -233,9 +261,11 @@ Item {
                 reuseItems: false
                 model: Library
                 currentIndex: Library.currentIndex
+                keyNavigationEnabled: false
+                focus: false
                 boundsBehavior: Flickable.StopAtBounds
                 highlightMoveDuration: 80
-                highlightFollowsCurrentItem: true
+                highlightFollowsCurrentItem: false
                 ScrollBar.vertical: ScrollBar {
                     policy: list.contentHeight > list.height ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
                 }
@@ -292,24 +322,29 @@ Item {
                         audioOutput: AudioOutput { muted: true; volume: 0 }
                         source: (!row.isFolder && !row.isImage) ? row.url : ""
                         autoPlay: false
+                        loops: 1
                         onMediaStatusChanged: {
                             if (row.isFolder || row.isImage)
                                 return
                             if (mediaStatus === MediaPlayer.LoadedMedia
-                                    || mediaStatus === MediaPlayer.BufferedMedia) {
-                                if (position === 0)
-                                    play()
-                            }
-                        }
-                        onPlaybackStateChanged: {
-                            if (playbackState === MediaPlayer.PlayingState)
-                                pause()
+                                    || mediaStatus === MediaPlayer.BufferedMedia)
+                                play()
                         }
                         Component.onCompleted: {
                             if (source != "")
                                 play()
                         }
                         Component.onDestruction: stop()
+                    }
+
+                    Connections {
+                        target: videoThumb.videoSink
+                        function onVideoFrameChanged() {
+                            if (row.isFolder || row.isImage)
+                                return
+                            if (thumbPlayer.playbackState === MediaPlayer.PlayingState)
+                                thumbPlayer.pause()
+                        }
                     }
 
                     Rectangle {
@@ -355,14 +390,33 @@ Item {
 
     ClipPreview {
         id: lastClip
-        parent: root.previewing ? clipMainSlot : clipPipSlot
+        parent: clipPipSlot
         anchors.fill: parent
-        visible: root.latestIndex >= 0
-        source: root.latestUrl
-        isImage: root.latestIsImage
+        visible: {
+            if (root.previewing)
+                return Library.count > 0 && !Library.currentIsFolder
+            return root.latestIndex >= 0
+        }
+        source: {
+            if (root.previewing && Library.count > 0 && !Library.currentIsFolder)
+                return Library.currentUrl
+            return root.latestUrl
+        }
+        isImage: {
+            if (root.previewing && Library.count > 0 && !Library.currentIsFolder)
+                return Library.currentIsImage
+            return root.latestIsImage
+        }
         crop: !root.previewing
-        autoPlay: false
+        autoPlay: root.previewing && Library.count > 0 && !Library.currentIsFolder && !Library.currentIsImage
         muted: !root.previewing
+    }
+
+    Component.onCompleted: {
+        liveOutput.parent = liveMainSlot
+        lastClip.parent = clipPipSlot
+        Capture.setPreviewOutput(liveOutput)
+        Capture.startPreview()
     }
 
     Timer {

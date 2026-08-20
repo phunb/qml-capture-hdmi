@@ -68,19 +68,19 @@ Window {
         target: HidInput
 
         function onToggleRecord() {
-            if (dialogOpen)
+            if (dialogOpen || liveView.previewing)
                 return
             Capture.toggleRecording()
         }
 
         function onCaptureSnapshot() {
-            if (dialogOpen)
+            if (dialogOpen || liveView.previewing)
                 return
             Capture.captureSnapshot()
         }
 
         function onPedalHoldRecord() {
-            if (dialogOpen)
+            if (dialogOpen || liveView.previewing)
                 return
             if (!Capture.recording)
                 Capture.startRecording()
@@ -89,6 +89,12 @@ Window {
         function onPedalTap() {
             if (dialogOpen) {
                 HidInput.cancelPedalHold()
+                return
+            }
+            if (liveView.previewing) {
+                HidInput.cancelPedalHold()
+                if (!Library.currentIsImage)
+                    liveView.togglePlay()
                 return
             }
             if (Capture.recording) {
@@ -172,7 +178,7 @@ Window {
         }
 
         function onSeekBy(ms) {
-            if (dialogOpen)
+            if (dialogOpen || !liveView.previewing)
                 return
             liveView.seekBy(ms)
         }

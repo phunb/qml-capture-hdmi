@@ -93,8 +93,14 @@ bool HidInputRouter::eventFilter(QObject *watched, QEvent *event)
             return true;
     }
 
+    if (event->type() == QEvent::ShortcutOverride) {
+        if (handleKey(static_cast<QKeyEvent *>(event), false)) {
+            event->accept();
+            return true;
+        }
+    }
     if (event->type() == QEvent::KeyPress) {
-        if (handleKey(static_cast<QKeyEvent *>(event)))
+        if (handleKey(static_cast<QKeyEvent *>(event), true))
             return true;
     }
     return false;
@@ -145,15 +151,10 @@ void HidInputRouter::handlePedalRelease()
         qInfo() << "Pedal release (B) before 2s, snapshot already taken. held" << heldMs << "ms";
 }
 
-bool HidInputRouter::handleKey(QKeyEvent *event)
+bool HidInputRouter::handleKey(QKeyEvent *event, bool emitSignals)
 {
-    if (event->isAutoRepeat()
-        && event->key() != Qt::Key_Left
-        && event->key() != Qt::Key_Right
-        && event->key() != Qt::Key_Up
-        && event->key() != Qt::Key_Down) {
+    if (event->isAutoRepeat())
         return false;
-    }
 
     const Qt::KeyboardModifiers mods = event->modifiers();
     const bool ctrl = mods.testFlag(Qt::ControlModifier);
@@ -161,7 +162,8 @@ bool HidInputRouter::handleKey(QKeyEvent *event)
     const bool shift = mods.testFlag(Qt::ShiftModifier);
 
     if (ctrl && alt && shift && event->key() == Qt::Key_Q) {
-        emit adminExit();
+        if (emitSignals)
+            emit adminExit();
         return true;
     }
 
@@ -172,55 +174,68 @@ bool HidInputRouter::handleKey(QKeyEvent *event)
     case Qt::Key_R:
     case Qt::Key_F9:
     case Qt::Key_MediaRecord:
-        emit toggleRecord();
+        if (emitSignals)
+            emit toggleRecord();
         return true;
     case Qt::Key_S:
     case Qt::Key_F8:
     case Qt::Key_Camera:
     case Qt::Key_Print:
-        emit captureSnapshot();
+        if (emitSignals)
+            emit captureSnapshot();
         return true;
     case Qt::Key_P:
-        emit togglePreview();
+        if (emitSignals)
+            emit togglePreview();
         return true;
     case Qt::Key_L:
     case Qt::Key_F2:
-        emit openLibrary();
+        if (emitSignals)
+            emit openLibrary();
         return true;
     case Qt::Key_H:
     case Qt::Key_Home:
     case Qt::Key_F1:
-        emit goLive();
+        if (emitSignals)
+            emit goLive();
         return true;
     case Qt::Key_Escape:
     case Qt::Key_Backspace:
     case Qt::Key_Back:
-        emit goBack();
+        if (emitSignals)
+            emit goBack();
         return true;
     case Qt::Key_Space:
     case Qt::Key_MediaPlay:
     case Qt::Key_MediaPause:
     case Qt::Key_MediaTogglePlayPause:
-        emit playPause();
+        if (emitSignals)
+            emit playPause();
         return true;
     case Qt::Key_Return:
     case Qt::Key_Enter:
-        emit selectItem();
+        if (emitSignals)
+            emit selectItem();
         return true;
     case Qt::Key_Delete:
-        emit deleteCurrent();
+        if (emitSignals)
+            emit deleteCurrent();
         return true;
     case Qt::Key_Up:
-        emit moveCurrent(-1);
+        if (emitSignals)
+            emit moveCurrent(-1);
         return true;
     case Qt::Key_Down:
-        emit moveCurrent(1);
+        if (emitSignals)
+            emit moveCurrent(1);
         return true;
     case Qt::Key_Left:
-        emit seekBy(shift ? -30000 : -10000);
+        if (emitSignals)
+            emit seekBy(-10000);
         return true;
     case Qt::Key_Right:
-        emit seekBy(shift ? 30000 : 10000);
+        if (emitSignals)
+            emit seekBy(10000);
         return true;
     default:
         return false;

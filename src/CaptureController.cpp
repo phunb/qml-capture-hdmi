@@ -5,12 +5,10 @@
 
 #include <QCameraDevice>
 #include <QCameraFormat>
-#include <QColor>
 #include <QDir>
 #include <QFileInfo>
 #include <QImage>
 #include <QMediaFormat>
-#include <QPoint>
 #include <QSize>
 #include <QUrl>
 #include <QVideoFrame>
@@ -119,7 +117,7 @@ CaptureController::CaptureController(AppSettings *settings, RecordingManager *re
     m_watchdog.setInterval(1500);
     connect(&m_watchdog, &QTimer::timeout, this, [this]() {
         const bool present = m_previewActive && m_lastFrameTimer.isValid()
-            && m_lastFrameTimer.elapsed() < 1600 && !m_blackFrames;
+            && m_lastFrameTimer.elapsed() < 1600;
         if (present != m_signalPresent) {
             m_signalPresent = present;
             emit signalPresentChanged();
@@ -175,9 +173,15 @@ void CaptureController::setPreviewOutput(QObject *output)
     if (!output)
         return;
 
-    if (QVideoSink *sink = output->property("videoSink").value<QVideoSink *>()) {
-        connect(sink, &QVideoSink::videoFrameChanged, this, &CaptureController::onFrame, Qt::UniqueConnection);
-    }
+    const auto connectSink = [this, output]() {
+        if (!output)
+            return;
+        if (QVideoSink *sink = output->property("videoSink").value<QVideoSink *>()) {
+            connect(sink, &QVideoSink::videoFrameChanged, this, &CaptureController::onFrame, Qt::UniqueConnection);
+        }
+    };
+    connectSink();
+    QTimer::singleShot(0, this, connectSink);
 }
 
 void CaptureController::startPreview()
@@ -431,39 +435,14 @@ void CaptureController::onFrame(const QVideoFrame &frame)
 {
     m_lastFrame = frame;
     m_lastFrameTimer.restart();
-    ++m_frameCounter;
-    if (m_frameCounter % 20 == 0)
-        m_blackFrames = frameLooksBlack(frame);
 
-    if (!m_signalPresent && !m_blackFrames) {
+    if (!m_signalPresent) {
         m_signalPresent = true;
         emit signalPresentChanged();
         m_lastError.clear();
         emit lastErrorChanged();
         updateStatus();
     }
-}
-
-bool CaptureController::frameLooksBlack(const QVideoFrame &frame) const
-{
-    const QImage image = frame.toImage();
-    if (image.isNull() || image.width() < 8 || image.height() < 8)
-        return false;
-
-    const QPoint samples[] = {
-        {image.width() / 2, image.height() / 2},
-        {image.width() / 4, image.height() / 4},
-        {image.width() * 3 / 4, image.height() / 4},
-        {image.width() / 4, image.height() * 3 / 4},
-        {image.width() * 3 / 4, image.height() * 3 / 4},
-    };
-
-    int total = 0;
-    for (const QPoint &p : samples) {
-        const QColor c = image.pixelColor(p);
-        total += (c.red() + c.green() + c.blue()) / 3;
-    }
-    return (total / 5) < 12;
 }
 
 QString CaptureController::recordingDurationText() const

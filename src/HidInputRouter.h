@@ -40,7 +40,7 @@ signals:
     void togglePreview();
 
 private:
-    bool handleKey(class QKeyEvent *event);
+    bool handleKey(class QKeyEvent *event, bool emitSignals = true);
     bool handlePedalKey(int key, bool pressed, bool autoRepeat);
     void handlePedalPress();
     void handlePedalRelease();
