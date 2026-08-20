@@ -7,6 +7,7 @@ Item {
     id: root
 
     property bool previewing: false
+    property bool liveMoving: false
 
     readonly property int rightWidth: Math.max(240, Math.min(340, width * 0.26))
     readonly property int latestIndex: {
@@ -58,25 +59,22 @@ Item {
     function enterPreview() {
         if (latestIndex < 0)
             return
-        selectLatest()
-        liveOutput.parent = pipLiveSlot
         lastClip.parent = clipMainSlot
+        focusLatest()
         previewing = true
         playCurrentIfVideo()
-        list.positionViewAtBeginning()
-        Qt.callLater(function() {
-            list.positionViewAtIndex(Library.currentIndex, ListView.Beginning)
-        })
     }
 
     function exitPreview() {
-        liveOutput.parent = liveMainSlot
-        lastClip.parent = clipPipSlot
+        const wasPreviewing = previewing
         previewing = false
+        lastClip.parent = clipPipSlot
         lastClip.crop = true
         lastClip.muted = true
         if (!latestIsImage)
             lastClip.pause()
+        if (wasPreviewing)
+            focusLatest()
     }
 
     function togglePreview() {
@@ -117,6 +115,15 @@ Item {
             Library.currentIndex = latestIndex
     }
 
+    function focusLatest() {
+        selectLatest()
+        list.positionViewAtBeginning()
+        Qt.callLater(function() {
+            if (latestIndex >= 0)
+                list.positionViewAtIndex(latestIndex, ListView.Beginning)
+        })
+    }
+
     Rectangle {
         anchors.fill: parent
         color: Theme.bg
@@ -142,13 +149,8 @@ Item {
         Item {
             id: liveMainSlot
             anchors.fill: parent
-            clip: true
-
-            VideoOutput {
-                id: liveOutput
-                anchors.fill: parent
-                fillMode: VideoOutput.PreserveAspectFit
-            }
+            z: root.liveMoving ? 10 : 0
+            clip: !root.liveMoving
         }
 
         Item {
@@ -157,10 +159,33 @@ Item {
             clip: true
         }
 
+        Item {
+            id: liveHost
+            parent: liveMainSlot
+            x: 0
+            y: 0
+            width: parent ? parent.width : 0
+            height: parent ? parent.height : 0
+
+            VideoOutput {
+                id: liveOutput
+                anchors.fill: parent
+                fillMode: VideoOutput.PreserveAspectFit
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                color: "transparent"
+                radius: 4
+                border.width: root.previewing || root.liveMoving ? 3 : 0
+                border.color: Theme.accent
+            }
+        }
+
         Rectangle {
             anchors.fill: parent
             color: Theme.bg
-            visible: !root.previewing && !Capture.signalPresent
+            visible: !root.previewing && !root.liveMoving && !Capture.signalPresent
             z: 1
             NoSignalOverlay {
                 anchors.fill: parent
@@ -178,6 +203,43 @@ Item {
                 running: false
                 NumberAnimation { to: 0.45; duration: 50 }
                 NumberAnimation { to: 0; duration: 160 }
+            }
+        }
+
+        Rectangle {
+            visible: true
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: parent.top
+            anchors.topMargin: 16
+            radius: 8
+            color: Theme.overlay
+            width: modeRow.implicitWidth + 28
+            height: 44
+            z: 20
+
+            Row {
+                id: modeRow
+                anchors.centerIn: parent
+                spacing: 10
+
+                Rectangle {
+                    visible: !root.previewing
+                    width: 16
+                    height: 16
+                    radius: 8
+                    color: Theme.live
+                    anchors.verticalCenter: parent.verticalCenter
+                    border.width: 2
+                    border.color: "#b7ffd4"
+                }
+
+                Text {
+                    text: root.previewing ? qsTr("Preview") : qsTr("Live")
+                    color: Theme.text
+                    font.pixelSize: Theme.fontBody
+                    font.bold: true
+                    anchors.verticalCenter: parent.verticalCenter
+                }
             }
         }
 
@@ -217,12 +279,12 @@ Item {
 
         Rectangle {
             id: pipFrame
-            visible: root.previewing
+            visible: root.previewing || root.liveMoving
             width: parent.width
             height: visible ? Math.round(width * 9 / 16) : 0
             color: Theme.surface
-            border.color: Theme.surfaceAlt
-            border.width: 1
+            border.color: Theme.accent
+            border.width: 3
             radius: 4
             clip: true
 
@@ -245,7 +307,7 @@ Item {
 
         Rectangle {
             width: parent.width
-            height: root.previewing ? parent.height - pipFrame.height - parent.spacing : parent.height
+            height: pipFrame.visible ? parent.height - pipFrame.height - parent.spacing : parent.height
             color: Theme.surface
             border.color: Theme.surfaceAlt
             border.width: 1
@@ -393,14 +455,15 @@ Item {
         id: lastClip
         parent: clipPipSlot
         anchors.fill: parent
-        visible: root.previewing && Library.count > 0 && !Library.currentIsFolder
+        visible: (root.previewing || (root.liveMoving && parent === clipMainSlot))
+                 && Library.count > 0 && !Library.currentIsFolder
         source: {
-            if (root.previewing && Library.count > 0 && !Library.currentIsFolder)
+            if ((root.previewing || root.liveMoving) && Library.count > 0 && !Library.currentIsFolder)
                 return Library.currentUrl
             return root.latestUrl
         }
         isImage: {
-            if (root.previewing && Library.count > 0 && !Library.currentIsFolder)
+            if ((root.previewing || root.liveMoving) && Library.count > 0 && !Library.currentIsFolder)
                 return Library.currentIsImage
             return root.latestIsImage
         }
@@ -409,8 +472,41 @@ Item {
         muted: !root.previewing
     }
 
+    states: State {
+        name: "previewLive"
+        when: root.previewing
+        ParentChange {
+            target: liveHost
+            parent: pipLiveSlot
+            x: 0
+            y: 0
+            width: pipLiveSlot.width
+            height: pipLiveSlot.height
+        }
+    }
+
+    transitions: Transition {
+        to: "previewLive"
+        SequentialAnimation {
+            PropertyAction { target: root; property: "liveMoving"; value: true }
+            ParentAnimation {
+                NumberAnimation {
+                    properties: "x,y,width,height"
+                    duration: 260
+                    easing.type: Easing.InOutCubic
+                }
+            }
+            PropertyAction { target: root; property: "liveMoving"; value: false }
+        }
+    }
+
+    onLiveMovingChanged: {
+        if (liveMoving || root.previewing)
+            return
+        lastClip.parent = clipPipSlot
+    }
+
     Component.onCompleted: {
-        liveOutput.parent = liveMainSlot
         lastClip.parent = clipPipSlot
         Capture.setPreviewOutput(liveOutput)
         Capture.startPreview()
