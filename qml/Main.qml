@@ -19,7 +19,6 @@ Window {
     function showLive() {
         if (screenName === "playback")
             playback.stopPlayback()
-        Capture.muted = false
         Capture.startPreview()
         screenName = "live"
     }
@@ -36,7 +35,6 @@ Window {
     function showPlayback(url, name) {
         if (Capture.recording)
             return
-        Capture.muted = true
         if (!Capture.recording)
             Capture.stopPreview()
         screenName = "playback"

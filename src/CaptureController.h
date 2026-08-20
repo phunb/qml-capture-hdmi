@@ -1,7 +1,5 @@
 #pragma once
 
-#include <QAudioInput>
-#include <QAudioOutput>
 #include <QCamera>
 #include <QCameraDevice>
 #include <QElapsedTimer>
@@ -34,7 +32,6 @@ class CaptureController : public QObject
     Q_PROPERTY(QString status READ status NOTIFY statusChanged)
     Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusChanged)
     Q_PROPERTY(bool signalPresent READ signalPresent NOTIFY signalPresentChanged)
-    Q_PROPERTY(bool muted READ muted WRITE setMuted NOTIFY mutedChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
 
 public:
@@ -54,8 +51,6 @@ public:
     QString status() const { return m_status; }
     QString statusMessage() const { return m_statusMessage; }
     bool signalPresent() const { return m_signalPresent; }
-    bool muted() const { return m_muted; }
-    void setMuted(bool muted);
     QString lastError() const { return m_lastError; }
 
     Q_INVOKABLE void setPreviewOutput(QObject *output);
@@ -74,7 +69,6 @@ signals:
     void recordingDurationMsChanged();
     void statusChanged();
     void signalPresentChanged();
-    void mutedChanged();
     void lastErrorChanged();
     void recordingFinished(const QString &path);
 
@@ -82,7 +76,6 @@ private:
     void applyDevice(int index);
     void choosePreferredDevice();
     void configureCameraFormat();
-    void configureAudio();
     void configureRecorder();
     void updateStatus();
     void setStatus(const QString &status, const QString &message);
@@ -98,8 +91,6 @@ private:
     QMediaCaptureSession m_session;
     QCamera m_camera;
     QMediaRecorder m_recorder;
-    QAudioInput m_audioInput;
-    QAudioOutput m_audioOutput;
 
     QList<QCameraDevice> m_devices;
     QStringList m_deviceNames;
@@ -107,7 +98,6 @@ private:
     bool m_previewActive = false;
     bool m_recording = false;
     bool m_signalPresent = false;
-    bool m_muted = false;
     bool m_blackFrames = false;
     int m_frameCounter = 0;
     qint64 m_recordingDurationMs = 0;

@@ -3,7 +3,6 @@
 #include "AppSettings.h"
 #include "RecordingManager.h"
 
-#include <QAudioDevice>
 #include <QCameraDevice>
 #include <QCameraFormat>
 #include <QColor>
@@ -71,14 +70,10 @@ CaptureController::CaptureController(AppSettings *settings, RecordingManager *re
 {
     m_session.setCamera(&m_camera);
     m_session.setRecorder(&m_recorder);
-    m_session.setAudioInput(&m_audioInput);
-    m_session.setAudioOutput(&m_audioOutput);
-    m_audioOutput.setVolume(1.0);
 
     configureRecorder();
 
     connect(&m_mediaDevices, &QMediaDevices::videoInputsChanged, this, &CaptureController::refreshDevices);
-    connect(&m_mediaDevices, &QMediaDevices::audioInputsChanged, this, &CaptureController::configureAudio);
 
     connect(&m_camera, &QCamera::errorOccurred, this, [this](QCamera::Error, const QString &error) {
         setError(error);
@@ -160,15 +155,6 @@ QString CaptureController::currentDeviceName() const
     if (m_currentDeviceIndex < 0 || m_currentDeviceIndex >= m_deviceNames.size())
         return tr("Không có thiết bị");
     return m_deviceNames.at(m_currentDeviceIndex);
-}
-
-void CaptureController::setMuted(bool muted)
-{
-    if (m_muted == muted)
-        return;
-    m_muted = muted;
-    m_audioOutput.setMuted(muted);
-    emit mutedChanged();
 }
 
 void CaptureController::setPreviewOutput(QObject *output)
@@ -294,7 +280,6 @@ void CaptureController::applyDevice(int index)
     m_currentDeviceIndex = index;
     m_camera.setCameraDevice(m_devices.at(index));
     configureCameraFormat();
-    configureAudio();
     m_settings->setPreferredDeviceId(QString::fromUtf8(m_devices.at(index).id()));
     emit currentDeviceIndexChanged();
 
@@ -321,33 +306,12 @@ void CaptureController::configureCameraFormat()
         m_camera.setCameraFormat(format);
 }
 
-void CaptureController::configureAudio()
-{
-    const QString camName = currentDeviceName().toLower();
-    QAudioDevice chosen = QMediaDevices::defaultAudioInput();
-    int bestScore = -1;
-    for (const QAudioDevice &device : QMediaDevices::audioInputs()) {
-        const QString name = device.description().toLower();
-        int score = 0;
-        if (looksLikeHdmiDevice(name))
-            score += 10;
-        if (!camName.isEmpty() && name.contains(camName.left(8)))
-            score += 5;
-        if (score > bestScore) {
-            bestScore = score;
-            chosen = device;
-        }
-    }
-    if (bestScore >= 0)
-        m_audioInput.setDevice(chosen);
-}
-
 void CaptureController::configureRecorder()
 {
     QMediaFormat format;
     format.setFileFormat(QMediaFormat::MPEG4);
     format.setVideoCodec(QMediaFormat::VideoCodec::H264);
-    format.setAudioCodec(QMediaFormat::AudioCodec::AAC);
+    format.setAudioCodec(QMediaFormat::AudioCodec::Unspecified);
     m_recorder.setMediaFormat(format);
     m_recorder.setQuality(QMediaRecorder::HighQuality);
 }
