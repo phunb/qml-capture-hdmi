@@ -6,6 +6,8 @@
 #include <QCameraDevice>
 #include <QCameraFormat>
 #include <QColor>
+#include <QDir>
+#include <QFileInfo>
 #include <QImage>
 #include <QMediaFormat>
 #include <QPoint>
@@ -133,6 +135,15 @@ CaptureController::CaptureController(AppSettings *settings, RecordingManager *re
     });
     m_tick.start();
 
+    m_flashTimer.setSingleShot(true);
+    connect(&m_flashTimer, &QTimer::timeout, this, [this]() {
+        if (!m_flashMessage.isEmpty()) {
+            m_flashMessage.clear();
+            emit flashMessageChanged();
+        }
+        updateStatus();
+    });
+
     m_statusMessage = tr("Đang tìm thiết bị HDMI...");
     refreshDevices();
 }
@@ -196,8 +207,13 @@ bool CaptureController::startRecording()
         setError(tr("Không có thiết bị HDMI để ghi."));
         return false;
     }
+    if (!QDir().mkpath(m_recordings->directory())) {
+        setError(tr("Không tạo được thư mục ghi: %1").arg(m_recordings->directory()));
+        return false;
+    }
     if (!m_recordings->hasEnoughSpace(m_settings->minFreeBytes())) {
-        setError(tr("Không đủ dung lượng ổ đĩa để ghi video."));
+        setError(tr("Không đủ dung lượng ổ đĩa để ghi video (%1, còn %2).")
+                     .arg(m_recordings->directory(), m_recordings->freeSpaceText()));
         return false;
     }
 
@@ -205,9 +221,11 @@ bool CaptureController::startRecording()
         m_camera.start();
 
     m_recordingPath = m_recordings->createNewRecordingPath();
+    m_settings->setDirectoryLocked(true);
     m_recorder.setOutputLocation(QUrl::fromLocalFile(m_recordingPath));
     m_recorder.record();
     if (m_recorder.error() != QMediaRecorder::NoError) {
+        m_settings->setDirectoryLocked(false);
         setError(m_recorder.errorString());
         return false;
     }
@@ -218,6 +236,7 @@ void CaptureController::stopRecording()
 {
     if (m_recorder.recorderState() == QMediaRecorder::RecordingState)
         m_recorder.stop();
+    m_settings->setDirectoryLocked(false);
 }
 
 void CaptureController::toggleRecording()
@@ -226,6 +245,43 @@ void CaptureController::toggleRecording()
         stopRecording();
     else
         startRecording();
+}
+
+bool CaptureController::captureSnapshot()
+{
+    if (!hasDevice()) {
+        showFlash(tr("Không có thiết bị HDMI để chụp."));
+        return false;
+    }
+    if (!m_lastFrame.isValid()) {
+        showFlash(tr("Chưa có khung hình để chụp."));
+        return false;
+    }
+    if (!QDir().mkpath(m_recordings->directory())) {
+        showFlash(tr("Không tạo được thư mục: %1").arg(m_recordings->directory()));
+        return false;
+    }
+    if (!m_recordings->hasEnoughSpace(8LL * 1024 * 1024)) {
+        showFlash(tr("Không đủ dung lượng để chụp (%1).").arg(m_recordings->directory()));
+        return false;
+    }
+
+    const QImage image = m_lastFrame.toImage();
+    if (image.isNull()) {
+        showFlash(tr("Không đọc được khung hình HDMI."));
+        return false;
+    }
+
+    const QString path = m_recordings->createNewCapturePath();
+    if (!image.save(path, "JPG", 95)) {
+        showFlash(tr("Không lưu được ảnh chụp."));
+        return false;
+    }
+
+    m_recordings->notifyChanged();
+    emit snapshotCaptured(path);
+    showFlash(tr("Đã chụp %1").arg(QFileInfo(path).fileName()));
+    return true;
 }
 
 void CaptureController::refreshDevices()
@@ -331,7 +387,7 @@ void CaptureController::updateStatus()
         return;
     }
     if (m_camera.isActive() && m_signalPresent) {
-        setStatus(QStringLiteral("live"), tr("Tín hiệu HDMI trực tiếp"));
+        setStatus(QStringLiteral("live"), QString());
         return;
     }
     if (m_camera.isActive()) {
@@ -363,14 +419,17 @@ void CaptureController::setRecording(bool recording)
     if (m_recording == recording)
         return;
     m_recording = recording;
-    if (!recording)
+    if (!recording) {
         m_recordingDurationMs = 0;
+        m_settings->setDirectoryLocked(false);
+    }
     emit recordingChanged();
     emit recordingDurationMsChanged();
 }
 
 void CaptureController::onFrame(const QVideoFrame &frame)
 {
+    m_lastFrame = frame;
     m_lastFrameTimer.restart();
     ++m_frameCounter;
     if (m_frameCounter % 20 == 0)
@@ -426,4 +485,11 @@ QString CaptureController::formatDuration(qint64 ms) const
     return QStringLiteral("%1:%2")
         .arg(m, 2, 10, QChar('0'))
         .arg(s, 2, 10, QChar('0'));
+}
+
+void CaptureController::showFlash(const QString &message)
+{
+    m_flashMessage = message;
+    emit flashMessageChanged();
+    m_flashTimer.start(2500);
 }

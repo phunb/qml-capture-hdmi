@@ -33,6 +33,7 @@ class CaptureController : public QObject
     Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusChanged)
     Q_PROPERTY(bool signalPresent READ signalPresent NOTIFY signalPresentChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
+    Q_PROPERTY(QString flashMessage READ flashMessage NOTIFY flashMessageChanged)
 
 public:
     CaptureController(AppSettings *settings, RecordingManager *recordings, QObject *parent = nullptr);
@@ -52,6 +53,7 @@ public:
     QString statusMessage() const { return m_statusMessage; }
     bool signalPresent() const { return m_signalPresent; }
     QString lastError() const { return m_lastError; }
+    QString flashMessage() const { return m_flashMessage; }
 
     Q_INVOKABLE void setPreviewOutput(QObject *output);
     Q_INVOKABLE void startPreview();
@@ -59,6 +61,7 @@ public:
     Q_INVOKABLE bool startRecording();
     Q_INVOKABLE void stopRecording();
     Q_INVOKABLE void toggleRecording();
+    Q_INVOKABLE bool captureSnapshot();
     Q_INVOKABLE void refreshDevices();
 
 signals:
@@ -71,6 +74,8 @@ signals:
     void signalPresentChanged();
     void lastErrorChanged();
     void recordingFinished(const QString &path);
+    void snapshotCaptured(const QString &path);
+    void flashMessageChanged();
 
 private:
     void applyDevice(int index);
@@ -84,6 +89,7 @@ private:
     void onFrame(const QVideoFrame &frame);
     bool frameLooksBlack(const QVideoFrame &frame) const;
     QString formatDuration(qint64 ms) const;
+    void showFlash(const QString &message);
 
     AppSettings *m_settings = nullptr;
     RecordingManager *m_recordings = nullptr;
@@ -105,8 +111,11 @@ private:
     QString m_status = QStringLiteral("nodevice");
     QString m_statusMessage;
     QString m_lastError;
+    QString m_flashMessage;
+    QVideoFrame m_lastFrame;
     QElapsedTimer m_lastFrameTimer;
     QTimer m_watchdog;
     QTimer m_tick;
+    QTimer m_flashTimer;
     QPointer<QObject> m_previewOutput;
 };

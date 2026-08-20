@@ -39,7 +39,8 @@ QStringList RecordingManager::listRecordings() const
 {
     QDir dir(m_directory);
     const QStringList files = dir.entryList(
-        {QStringLiteral("*.mp4"), QStringLiteral("*.mkv"), QStringLiteral("*.mov")},
+        {QStringLiteral("*.mp4"), QStringLiteral("*.mkv"), QStringLiteral("*.mov"),
+         QStringLiteral("*.jpg"), QStringLiteral("*.jpeg"), QStringLiteral("*.png")},
         QDir::Files,
         QDir::Time);
 
@@ -54,7 +55,26 @@ QString RecordingManager::createNewRecordingPath()
 {
     QDir().mkpath(m_directory);
     const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd_HH-mm-ss"));
-    return QDir(m_directory).filePath(QStringLiteral("hdmi_%1.mp4").arg(stamp));
+    QString path = QDir(m_directory).filePath(QStringLiteral("record_%1.mp4").arg(stamp));
+    int suffix = 2;
+    while (QFileInfo::exists(path)) {
+        path = QDir(m_directory).filePath(QStringLiteral("record_%1_%2.mp4").arg(stamp).arg(suffix));
+        ++suffix;
+    }
+    return path;
+}
+
+QString RecordingManager::createNewCapturePath()
+{
+    QDir().mkpath(m_directory);
+    const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd_HH-mm-ss"));
+    QString path = QDir(m_directory).filePath(QStringLiteral("capture_%1.jpg").arg(stamp));
+    int suffix = 2;
+    while (QFileInfo::exists(path)) {
+        path = QDir(m_directory).filePath(QStringLiteral("capture_%1_%2.jpg").arg(stamp).arg(suffix));
+        ++suffix;
+    }
+    return path;
 }
 
 bool RecordingManager::removeRecording(const QString &filePath)
@@ -77,19 +97,43 @@ bool RecordingManager::removeRecording(const QString &filePath)
     return ok;
 }
 
+namespace {
+
+QStorageInfo storageFor(const QString &directory)
+{
+    QStorageInfo info(directory);
+    if (!info.isValid() || !info.isReady())
+        info.setPath(QFileInfo(directory).absolutePath());
+    if (!info.isValid() || !info.isReady())
+        info = QStorageInfo::root();
+    info.refresh();
+    return info;
+}
+
+} // namespace
+
 qint64 RecordingManager::freeBytes() const
 {
-    return QStorageInfo(m_directory).bytesAvailable();
+    const QStorageInfo info = storageFor(m_directory);
+    if (!info.isValid() || !info.isReady())
+        return -1;
+    return info.bytesAvailable();
 }
 
 QString RecordingManager::freeSpaceText() const
 {
-    return QLocale().formattedDataSize(qMax<qint64>(0, freeBytes()));
+    const qint64 free = freeBytes();
+    if (free < 0)
+        return QStringLiteral("?");
+    return QLocale().formattedDataSize(free);
 }
 
 bool RecordingManager::hasEnoughSpace(qint64 minimumBytes) const
 {
-    return freeBytes() >= minimumBytes;
+    const qint64 free = freeBytes();
+    if (free < 0)
+        return QDir().mkpath(m_directory);
+    return free >= minimumBytes;
 }
 
 void RecordingManager::notifyChanged()

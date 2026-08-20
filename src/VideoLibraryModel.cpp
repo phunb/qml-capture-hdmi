@@ -51,6 +51,8 @@ QVariant VideoLibraryModel::data(const QModelIndex &index, int role) const
         return item.isFolder ? QUrl() : QUrl::fromLocalFile(item.filePath);
     case IsFolderRole:
         return item.isFolder;
+    case IsImageRole:
+        return item.isImage;
     case DetailTextRole:
         if (item.isFolder)
             return QStringLiteral("Thư mục  •  %1")
@@ -74,6 +76,7 @@ QHash<int, QByteArray> VideoLibraryModel::roleNames() const
         {SizeTextRole, "sizeText"},
         {UrlRole, "url"},
         {IsFolderRole, "isFolder"},
+        {IsImageRole, "isImage"},
         {DetailTextRole, "detailText"},
     };
 }
@@ -110,6 +113,11 @@ QString VideoLibraryModel::currentName() const
 bool VideoLibraryModel::currentIsFolder() const
 {
     return isFolderAt(m_currentIndex);
+}
+
+bool VideoLibraryModel::currentIsImage() const
+{
+    return isImageAt(m_currentIndex);
 }
 
 QString VideoLibraryModel::rootPath() const
@@ -189,6 +197,11 @@ bool VideoLibraryModel::isFolderAt(int index) const
     return isValidIndex(index) && m_items.at(index).isFolder;
 }
 
+bool VideoLibraryModel::isImageAt(int index) const
+{
+    return isValidIndex(index) && m_items.at(index).isImage;
+}
+
 bool VideoLibraryModel::removeAt(int index)
 {
     if (!isValidIndex(index) || m_items.at(index).isFolder)
@@ -232,11 +245,13 @@ void VideoLibraryModel::reload()
         item.created = info.lastModified();
         item.size = 0;
         item.isFolder = true;
+        item.isImage = false;
         m_items.append(item);
     }
 
     const QFileInfoList files = dir.entryInfoList(
-        {QStringLiteral("*.mp4"), QStringLiteral("*.mkv"), QStringLiteral("*.mov"), QStringLiteral("*.avi")},
+        {QStringLiteral("*.mp4"), QStringLiteral("*.mkv"), QStringLiteral("*.mov"), QStringLiteral("*.avi"),
+         QStringLiteral("*.jpg"), QStringLiteral("*.jpeg"), QStringLiteral("*.png")},
         QDir::Files,
         QDir::Time);
     for (const QFileInfo &info : files) {
@@ -246,6 +261,10 @@ void VideoLibraryModel::reload()
         item.created = info.lastModified();
         item.size = info.size();
         item.isFolder = false;
+        const QString suffix = info.suffix().toLower();
+        item.isImage = (suffix == QLatin1String("jpg")
+                        || suffix == QLatin1String("jpeg")
+                        || suffix == QLatin1String("png"));
         m_items.append(item);
     }
     endResetModel();

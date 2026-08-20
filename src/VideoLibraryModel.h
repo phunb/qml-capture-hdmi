@@ -16,6 +16,7 @@ class VideoLibraryModel : public QAbstractListModel
     Q_PROPERTY(QUrl currentUrl READ currentUrl NOTIFY currentIndexChanged)
     Q_PROPERTY(QString currentName READ currentName NOTIFY currentIndexChanged)
     Q_PROPERTY(bool currentIsFolder READ currentIsFolder NOTIFY currentIndexChanged)
+    Q_PROPERTY(bool currentIsImage READ currentIsImage NOTIFY currentIndexChanged)
     Q_PROPERTY(QString rootPath READ rootPath NOTIFY pathChanged)
     Q_PROPERTY(QString currentPath READ currentPath NOTIFY pathChanged)
     Q_PROPERTY(QString displayPath READ displayPath NOTIFY pathChanged)
@@ -31,6 +32,7 @@ public:
         SizeTextRole,
         UrlRole,
         IsFolderRole,
+        IsImageRole,
         DetailTextRole
     };
     Q_ENUM(Roles)
@@ -46,6 +48,7 @@ public:
     QUrl currentUrl() const;
     QString currentName() const;
     bool currentIsFolder() const;
+    bool currentIsImage() const;
     QString rootPath() const;
     QString currentPath() const { return m_currentPath; }
     QString displayPath() const;
@@ -57,6 +60,7 @@ public:
     Q_INVOKABLE bool openAt(int index);
     Q_INVOKABLE bool openCurrent();
     Q_INVOKABLE bool isFolderAt(int index) const;
+    Q_INVOKABLE bool isImageAt(int index) const;
     Q_INVOKABLE bool removeAt(int index);
     Q_INVOKABLE QUrl urlAt(int index) const;
     Q_INVOKABLE void moveCurrent(int delta);
@@ -73,6 +77,7 @@ private:
         QDateTime created;
         qint64 size = 0;
         bool isFolder = false;
+        bool isImage = false;
     };
 
     void reload();

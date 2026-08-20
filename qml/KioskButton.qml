@@ -9,6 +9,7 @@ Button {
     property color textColor: Theme.text
     property bool danger: false
     property bool primary: false
+    property bool selected: false
 
     implicitHeight: Theme.touch
     implicitWidth: 180
@@ -24,8 +25,8 @@ Button {
                 return Qt.lighter(fillColor(), 1.12)
             return fillColor()
         }
-        border.width: root.activeFocus ? 2 : 0
-        border.color: Theme.text
+        border.width: (root.selected || root.activeFocus) ? 3 : 0
+        border.color: root.selected ? "#f5c542" : Theme.text
 
         function fillColor() {
             if (root.danger)

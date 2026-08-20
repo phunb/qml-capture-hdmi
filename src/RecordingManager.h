@@ -22,6 +22,7 @@ public:
 
     QStringList listRecordings() const;
     QString createNewRecordingPath();
+    QString createNewCapturePath();
     bool removeRecording(const QString &filePath);
 
     qint64 freeBytes() const;

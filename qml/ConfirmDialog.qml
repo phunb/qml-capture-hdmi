@@ -11,6 +11,7 @@ Popup {
     property string confirmText: qsTr("Đồng ý")
     property string cancelText: qsTr("Hủy")
     property bool danger: false
+    property bool confirmSelected: false
 
     signal confirmed()
     signal cancelled()
@@ -60,6 +61,7 @@ Popup {
             KioskButton {
                 Layout.fillWidth: true
                 text: root.cancelText
+                selected: !root.confirmSelected
                 onClicked: {
                     root.cancelled()
                     root.close()
@@ -71,6 +73,7 @@ Popup {
                 text: root.confirmText
                 danger: root.danger
                 primary: true
+                selected: root.confirmSelected
                 onClicked: {
                     root.confirmed()
                     root.close()

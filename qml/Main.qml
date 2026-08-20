@@ -15,6 +15,7 @@ Window {
 
     property string screenName: "live"
     property bool dialogOpen: deleteDialog.opened || exitDialog.opened
+    property int pendingDeleteIndex: -1
 
     function showLive() {
         if (screenName === "playback")
@@ -32,13 +33,22 @@ Window {
         screenName = "library"
     }
 
-    function showPlayback(url, name) {
+    function showPlayback(url, name, isImage) {
         if (Capture.recording)
             return
         if (!Capture.recording)
             Capture.stopPreview()
         screenName = "playback"
-        playback.play(url, name)
+        playback.play(url, name, !!isImage)
+    }
+
+    function activateLibraryItem() {
+        if (Library.count <= 0)
+            return
+        if (Library.currentIsFolder)
+            Library.openCurrent()
+        else
+            root.showPlayback(Library.currentUrl, Library.currentName, Library.currentIsImage)
     }
 
     onClosing: function(close) {
@@ -52,6 +62,7 @@ Window {
     }
 
     LiveView {
+        id: liveView
         anchors.fill: parent
         visible: screenName === "live"
         enabled: visible
@@ -64,10 +75,13 @@ Window {
         visible: screenName === "library"
         enabled: visible
         onBackRequested: root.showLive()
-        onPlayRequested: function(url, name) { root.showPlayback(url, name) }
+        onPlayRequested: function(url, name, isImage) {
+            root.showPlayback(url, name, isImage)
+        }
         onDeleteRequested: function(index, name) {
             pendingDeleteIndex = index
             deleteDialog.messageText = qsTr("Xóa vĩnh viễn “%1”?").arg(name)
+            deleteDialog.confirmSelected = false
             deleteDialog.open()
         }
     }
@@ -80,11 +94,9 @@ Window {
         onBackRequested: root.showLibrary()
     }
 
-    property int pendingDeleteIndex: -1
-
     ConfirmDialog {
         id: deleteDialog
-        titleText: qsTr("Xóa video")
+        titleText: qsTr("Xóa file")
         confirmText: qsTr("Xóa")
         danger: true
         onConfirmed: {
@@ -112,7 +124,44 @@ Window {
                 return
             if (screenName !== "live")
                 root.showLive()
+            liveView.selectedAction = 1
             Capture.toggleRecording()
+        }
+
+        function onCaptureSnapshot() {
+            if (dialogOpen)
+                return
+            if (screenName !== "live")
+                root.showLive()
+            liveView.selectedAction = 0
+            Capture.captureSnapshot()
+        }
+
+        function onPedalHoldRecord() {
+            if (dialogOpen)
+                return
+            if (screenName !== "live")
+                root.showLive()
+            if (!Capture.recording) {
+                liveView.selectedAction = 1
+                Capture.startRecording()
+            }
+        }
+
+        function onPedalTap() {
+            if (dialogOpen)
+                return
+            if (screenName !== "live") {
+                root.showLive()
+                return
+            }
+            if (Capture.recording) {
+                liveView.selectedAction = 1
+                Capture.stopRecording()
+                return
+            }
+            liveView.selectedAction = 0
+            Capture.captureSnapshot()
         }
 
         function onOpenLibrary() {
@@ -152,34 +201,56 @@ Window {
             if (screenName === "playback")
                 playback.togglePlay()
             else if (screenName === "live")
-                Capture.toggleRecording()
+                liveView.activateSelected()
         }
 
         function onSelectItem() {
             if (deleteDialog.opened) {
-                if (pendingDeleteIndex >= 0)
-                    Library.removeAt(pendingDeleteIndex)
-                pendingDeleteIndex = -1
-                deleteDialog.close()
+                if (deleteDialog.confirmSelected) {
+                    if (pendingDeleteIndex >= 0)
+                        Library.removeAt(pendingDeleteIndex)
+                    pendingDeleteIndex = -1
+                    deleteDialog.close()
+                } else {
+                    pendingDeleteIndex = -1
+                    deleteDialog.close()
+                }
                 return
             }
             if (exitDialog.opened) {
-                Kiosk.exitApp()
+                if (exitDialog.confirmSelected)
+                    Kiosk.exitApp()
+                else
+                    exitDialog.close()
                 return
             }
-            if (screenName === "library" && Library.count > 0) {
-                if (Library.currentIsFolder)
-                    Library.openCurrent()
-                else
-                    root.showPlayback(Library.currentUrl, Library.currentName)
+            if (screenName === "live") {
+                liveView.activateSelected()
+                return
             }
+            if (screenName === "playback") {
+                playback.activateSelected()
+                return
+            }
+            if (screenName === "library")
+                root.activateLibraryItem()
         }
 
         function onMoveCurrent(delta) {
-            if (dialogOpen)
+            if (deleteDialog.opened) {
+                deleteDialog.confirmSelected = !deleteDialog.confirmSelected
                 return
-            if (screenName === "library")
+            }
+            if (exitDialog.opened) {
+                exitDialog.confirmSelected = !exitDialog.confirmSelected
+                return
+            }
+            if (screenName === "live")
+                liveView.moveSelection(delta)
+            else if (screenName === "library")
                 Library.moveCurrent(delta)
+            else if (screenName === "playback")
+                playback.moveSelection(delta)
         }
 
         function onSeekBy(ms) {
@@ -189,6 +260,8 @@ Window {
                 playback.seekBy(ms)
             else if (screenName === "library")
                 Library.moveCurrent(ms > 0 ? 1 : -1)
+            else if (screenName === "live")
+                liveView.moveSelection(ms > 0 ? 1 : -1)
         }
 
         function onDeleteCurrent() {
@@ -197,11 +270,13 @@ Window {
             if (screenName === "library" && Library.count > 0 && !Library.currentIsFolder) {
                 pendingDeleteIndex = Library.currentIndex
                 deleteDialog.messageText = qsTr("Xóa vĩnh viễn “%1”?").arg(Library.currentName)
+                deleteDialog.confirmSelected = false
                 deleteDialog.open()
             }
         }
 
         function onAdminExit() {
+            exitDialog.confirmSelected = false
             exitDialog.open()
         }
     }
@@ -209,6 +284,7 @@ Window {
     Connections {
         target: Kiosk
         function onAdminExitRequested() {
+            exitDialog.confirmSelected = false
             exitDialog.open()
         }
     }

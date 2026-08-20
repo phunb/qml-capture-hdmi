@@ -12,7 +12,7 @@ QtObject {
     readonly property color live: "#3ddc84"
     readonly property color warning: "#f5c542"
     readonly property color overlay: "#cc07090c"
-    readonly property int touch: 84
+    readonly property int touch: 96
     readonly property int radius: 20
     readonly property int fontTitle: 30
     readonly property int fontBody: 20
