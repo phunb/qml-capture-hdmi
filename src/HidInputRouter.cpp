@@ -5,7 +5,7 @@
 #include <QtGlobal>
 
 namespace {
-constexpr int kPedalHoldMs = 3000;
+constexpr int kPedalHoldMs = 2000;
 constexpr int kPedalPressVk = 0x43;   // ElfKey Double trigger: press = C
 constexpr int kPedalReleaseVk = 0x42; // ElfKey Double trigger: release = B
 }
@@ -24,7 +24,7 @@ HidInputRouter::HidInputRouter(QObject *parent)
         if (!m_pedalDown)
             return;
         m_pedalHoldFired = true;
-        qInfo() << "Pedal hold 3s -> record after" << pedalHeldMs() << "ms";
+        qInfo() << "Pedal hold 2s -> record after" << pedalHeldMs() << "ms";
         emit pedalHoldRecord();
     });
 
@@ -113,6 +113,12 @@ bool HidInputRouter::handlePedalKey(int key, bool pressed, bool autoRepeat)
     return true;
 }
 
+void HidInputRouter::cancelPedalHold()
+{
+    m_pedalHoldTimer.stop();
+    m_pedalHoldFired = false;
+}
+
 void HidInputRouter::handlePedalPress()
 {
     if (m_pedalDown)
@@ -121,7 +127,8 @@ void HidInputRouter::handlePedalPress()
     m_pedalHoldFired = false;
     m_pressClock.restart();
     m_pedalHoldTimer.start();
-    qInfo() << "Pedal press (C), wait 3s to record";
+    qInfo() << "Pedal press (C) -> snapshot, wait 2s to record";
+    emit pedalTap();
 }
 
 void HidInputRouter::handlePedalRelease()
@@ -132,12 +139,10 @@ void HidInputRouter::handlePedalRelease()
     const qint64 heldMs = pedalHeldMs();
     const bool holdFired = m_pedalHoldFired;
     m_pedalHoldTimer.stop();
-    if (!holdFired) {
-        qInfo() << "Pedal release (B) tap -> snapshot after" << heldMs << "ms";
-        emit pedalTap();
-    } else {
+    if (holdFired)
         qInfo() << "Pedal release (B) after hold, keep recording. held" << heldMs << "ms";
-    }
+    else
+        qInfo() << "Pedal release (B) before 2s, snapshot already taken. held" << heldMs << "ms";
 }
 
 bool HidInputRouter::handleKey(QKeyEvent *event)

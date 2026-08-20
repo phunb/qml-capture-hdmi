@@ -149,15 +149,19 @@ Window {
         }
 
         function onPedalTap() {
-            if (dialogOpen)
+            if (dialogOpen) {
+                HidInput.cancelPedalHold()
                 return
+            }
             if (screenName !== "live") {
+                HidInput.cancelPedalHold()
                 root.showLive()
                 return
             }
             if (Capture.recording) {
                 liveView.selectedAction = 1
                 Capture.stopRecording()
+                HidInput.cancelPedalHold()
                 return
             }
             liveView.selectedAction = 0

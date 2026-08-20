@@ -101,7 +101,7 @@ Rectangle {
             color: Theme.muted
             font.pixelSize: 14
             horizontalAlignment: Text.AlignHCenter
-            text: qsTr("Pedal: nhấn chụp    giữ 3s ghi    ↑↓ chọn    Enter thực hiện")
+            text: qsTr("Pedal: nhấn chụp    giữ 2s ghi    ↑↓ chọn    Enter thực hiện")
         }
     }
 }

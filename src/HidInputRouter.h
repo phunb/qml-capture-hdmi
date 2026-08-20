@@ -17,6 +17,7 @@ public:
     ~HidInputRouter() override;
 
     bool eventFilter(QObject *watched, QEvent *event) override;
+    Q_INVOKABLE void cancelPedalHold();
 
 #ifdef Q_OS_WIN
     static LRESULT CALLBACK lowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam);
