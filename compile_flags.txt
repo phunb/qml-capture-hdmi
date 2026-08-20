@@ -5,7 +5,7 @@
 -DQT_QML_LIB
 -DQT_QUICK_LIB
 -I.
--IC:/Users/Administrator/Desktop/qml-project/src
+-Isrc
 -IC:/Qt/6.8.3/mingw_64/include
 -IC:/Qt/6.8.3/mingw_64/include/QtCore
 -IC:/Qt/6.8.3/mingw_64/include/QtGui

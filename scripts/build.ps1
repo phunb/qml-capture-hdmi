@@ -1,7 +1,9 @@
-$root = Split-Path -Parent $MyInvocation.MyCommand.Path
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$root = Split-Path -Parent $scriptDir
 Set-Location $root
 
-$env:Path = "C:\Qt\Tools\mingw1310_64\bin;C:\Qt\6.8.3\mingw_64\bin;C:\Program Files\CMake\bin;C:\ProgramData\chocolatey\bin;" + [System.Environment]::GetEnvironmentVariable("Path","Machine")
+$ninjaDir = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages\Ninja-build.Ninja_Microsoft.Winget.Source_8wekyb3d8bbwe"
+$env:Path = "C:\Qt\Tools\mingw1310_64\bin;C:\Qt\6.8.3\mingw_64\bin;C:\Program Files\CMake\bin;$ninjaDir;C:\ProgramData\chocolatey\bin;" + [System.Environment]::GetEnvironmentVariable("Path","Machine")
 
 cmake -S . -B build -G Ninja `
   -DCMAKE_PREFIX_PATH="C:/Qt/6.8.3/mingw_64" `
