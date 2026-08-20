@@ -217,8 +217,9 @@ Item {
 
         Rectangle {
             id: pipFrame
+            visible: root.previewing
             width: parent.width
-            height: Math.round(width * 9 / 16)
+            height: visible ? Math.round(width * 9 / 16) : 0
             color: Theme.surface
             border.color: Theme.surfaceAlt
             border.width: 1
@@ -244,7 +245,7 @@ Item {
 
         Rectangle {
             width: parent.width
-            height: parent.height - pipFrame.height - parent.spacing
+            height: root.previewing ? parent.height - pipFrame.height - parent.spacing : parent.height
             color: Theme.surface
             border.color: Theme.surfaceAlt
             border.width: 1
@@ -392,11 +393,7 @@ Item {
         id: lastClip
         parent: clipPipSlot
         anchors.fill: parent
-        visible: {
-            if (root.previewing)
-                return Library.count > 0 && !Library.currentIsFolder
-            return root.latestIndex >= 0
-        }
+        visible: root.previewing && Library.count > 0 && !Library.currentIsFolder
         source: {
             if (root.previewing && Library.count > 0 && !Library.currentIsFolder)
                 return Library.currentUrl
