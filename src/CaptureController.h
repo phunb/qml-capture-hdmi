@@ -104,8 +104,6 @@ private:
     bool m_previewActive = false;
     bool m_recording = false;
     bool m_signalPresent = false;
-    int m_frameCounter = 0;
-    int m_blankStreak = 0;
     qint64 m_recordingDurationMs = 0;
     QString m_recordingPath;
     QString m_status = QStringLiteral("nodevice");

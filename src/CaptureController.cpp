@@ -5,7 +5,6 @@
 
 #include <QCameraDevice>
 #include <QCameraFormat>
-#include <QColor>
 #include <QDir>
 #include <QFileInfo>
 #include <QImage>
@@ -62,40 +61,6 @@ QCameraFormat bestFormat(const QCameraDevice &device)
     return best;
 }
 
-// Capture cards keep emitting frames with no HDMI: a flat near-black field.
-// Covering the sensor is dark but not uniform — leftover light and noise.
-bool frameLooksLikeNoInput(const QVideoFrame &frame)
-{
-    const QImage image = frame.toImage();
-    if (image.isNull() || image.width() < 16 || image.height() < 16)
-        return false;
-
-    qint64 sum = 0;
-    qint64 sumSq = 0;
-    int maxL = 0;
-    int minL = 255;
-    int n = 0;
-    for (int iy = 1; iy <= 5; ++iy) {
-        const int y = image.height() * iy / 6;
-        for (int ix = 1; ix <= 5; ++ix) {
-            const int x = image.width() * ix / 6;
-            const QColor c = image.pixelColor(x, y);
-            const int l = (c.red() + c.green() + c.blue()) / 3;
-            sum += l;
-            sumSq += qint64(l) * l;
-            maxL = qMax(maxL, l);
-            minL = qMin(minL, l);
-            ++n;
-        }
-    }
-
-    const int mean = int(sum / n);
-    const int var = int(sumSq / n - qint64(mean) * mean);
-    if (maxL > 28)
-        return false;
-    return mean <= 18 && var <= 6 && (maxL - minL) <= 5;
-}
-
 } // namespace
 
 CaptureController::CaptureController(AppSettings *settings, RecordingManager *recordings, QObject *parent)
@@ -119,7 +84,6 @@ CaptureController::CaptureController(AppSettings *settings, RecordingManager *re
             emit previewActiveChanged();
         }
         if (!active) {
-            m_blankStreak = 0;
             if (m_signalPresent) {
                 m_signalPresent = false;
                 emit signalPresentChanged();
@@ -465,9 +429,8 @@ void CaptureController::setRecording(bool recording)
 
 void CaptureController::refreshSignalPresent()
 {
-    const bool framesFresh = m_previewActive && m_lastFrameTimer.isValid()
+    const bool present = hasDevice() && m_previewActive && m_lastFrameTimer.isValid()
         && m_lastFrameTimer.elapsed() < 1600;
-    const bool present = framesFresh && m_blankStreak < 6;
     if (present == m_signalPresent)
         return;
     m_signalPresent = present;
@@ -483,17 +446,6 @@ void CaptureController::onFrame(const QVideoFrame &frame)
 {
     m_lastFrame = frame;
     m_lastFrameTimer.restart();
-    ++m_frameCounter;
-
-    if (m_frameCounter % 8 == 0) {
-        if (frameLooksLikeNoInput(frame)) {
-            if (m_blankStreak < 100)
-                ++m_blankStreak;
-        } else {
-            m_blankStreak = 0;
-        }
-    }
-
     refreshSignalPresent();
 }
 

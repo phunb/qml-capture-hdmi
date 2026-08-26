@@ -223,7 +223,7 @@ Item {
                 spacing: 10
 
                 Rectangle {
-                    visible: !root.previewing
+                    visible: !root.previewing && Capture.signalPresent
                     width: 16
                     height: 16
                     radius: 8
