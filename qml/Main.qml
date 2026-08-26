@@ -68,38 +68,30 @@ Window {
         target: HidInput
 
         function onToggleRecord() {
-            if (dialogOpen || liveView.previewing)
+            if (dialogOpen)
                 return
+            if (liveView.previewing) {
+                liveView.moveSelection(1)
+                return
+            }
             Capture.toggleRecording()
         }
 
         function onCaptureSnapshot() {
-            if (dialogOpen || liveView.previewing)
+            if (dialogOpen)
                 return
+            if (liveView.previewing) {
+                liveView.moveSelection(-1)
+                return
+            }
             Capture.captureSnapshot()
         }
 
-        function onPedalHoldRecord() {
-            if (dialogOpen || liveView.previewing)
-                return
-            if (!Capture.recording)
-                Capture.startRecording()
-        }
-
         function onPedalTap() {
-            if (dialogOpen) {
-                HidInput.cancelPedalHold()
+            if (dialogOpen)
                 return
-            }
             if (liveView.previewing) {
-                HidInput.cancelPedalHold()
-                if (!Library.currentIsImage)
-                    liveView.togglePlay()
-                return
-            }
-            if (Capture.recording) {
-                Capture.stopRecording()
-                HidInput.cancelPedalHold()
+                liveView.exitPreview()
                 return
             }
             Capture.captureSnapshot()
@@ -112,9 +104,12 @@ Window {
         }
 
         function onTogglePreview() {
-            if (dialogOpen)
+            if (dialogOpen || Capture.recording)
                 return
-            liveView.togglePreview()
+            if (liveView.previewing)
+                liveView.seekBy(10000)
+            else
+                liveView.enterPreview()
         }
 
         function onGoBack() {
@@ -174,7 +169,9 @@ Window {
                 exitDialog.confirmSelected = !exitDialog.confirmSelected
                 return
             }
-            liveView.moveSelection(delta)
+            if (!liveView.previewing)
+                return
+            liveView.seekBy(delta > 0 ? -10000 : 10000)
         }
 
         function onSeekBy(ms) {

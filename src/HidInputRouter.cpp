@@ -5,7 +5,6 @@
 #include <QtGlobal>
 
 namespace {
-constexpr int kPedalHoldMs = 2000;
 constexpr int kPedalPressVk = 0x43;   // ElfKey Double trigger: press = C
 constexpr int kPedalReleaseVk = 0x42; // ElfKey Double trigger: release = B
 }
@@ -18,15 +17,6 @@ HidInputRouter::HidInputRouter(QObject *parent)
     : QObject(parent)
 {
     qApp->installEventFilter(this);
-    m_pedalHoldTimer.setSingleShot(true);
-    m_pedalHoldTimer.setInterval(kPedalHoldMs);
-    connect(&m_pedalHoldTimer, &QTimer::timeout, this, [this]() {
-        if (!m_pedalDown)
-            return;
-        m_pedalHoldFired = true;
-        qInfo() << "Pedal hold 2s -> record after" << pedalHeldMs() << "ms";
-        emit pedalHoldRecord();
-    });
 
 #ifdef Q_OS_WIN
     s_instance = this;
@@ -47,11 +37,6 @@ HidInputRouter::~HidInputRouter()
     if (s_instance == this)
         s_instance = nullptr;
 #endif
-}
-
-qint64 HidInputRouter::pedalHeldMs() const
-{
-    return m_pressClock.isValid() ? m_pressClock.elapsed() : 0;
 }
 
 #ifdef Q_OS_WIN
@@ -119,21 +104,12 @@ bool HidInputRouter::handlePedalKey(int key, bool pressed, bool autoRepeat)
     return true;
 }
 
-void HidInputRouter::cancelPedalHold()
-{
-    m_pedalHoldTimer.stop();
-    m_pedalHoldFired = false;
-}
-
 void HidInputRouter::handlePedalPress()
 {
     if (m_pedalDown)
         return;
     m_pedalDown = true;
-    m_pedalHoldFired = false;
-    m_pressClock.restart();
-    m_pedalHoldTimer.start();
-    qInfo() << "Pedal press (C) -> snapshot, wait 2s to record";
+    qInfo() << "Pedal press (C) -> snapshot";
     emit pedalTap();
 }
 
@@ -142,13 +118,6 @@ void HidInputRouter::handlePedalRelease()
     if (!m_pedalDown)
         return;
     m_pedalDown = false;
-    const qint64 heldMs = pedalHeldMs();
-    const bool holdFired = m_pedalHoldFired;
-    m_pedalHoldTimer.stop();
-    if (holdFired)
-        qInfo() << "Pedal release (B) after hold, keep recording. held" << heldMs << "ms";
-    else
-        qInfo() << "Pedal release (B) before 2s, snapshot already taken. held" << heldMs << "ms";
 }
 
 bool HidInputRouter::handleKey(QKeyEvent *event, bool emitSignals)
@@ -171,12 +140,11 @@ bool HidInputRouter::handleKey(QKeyEvent *event, bool emitSignals)
         return true;
 
     switch (event->key()) {
-    case Qt::Key_R:
-    case Qt::Key_F9:
-    case Qt::Key_MediaRecord:
+    case Qt::Key_2:
         if (emitSignals)
             emit toggleRecord();
         return true;
+    case Qt::Key_1:
     case Qt::Key_S:
     case Qt::Key_F8:
     case Qt::Key_Camera:
@@ -184,7 +152,7 @@ bool HidInputRouter::handleKey(QKeyEvent *event, bool emitSignals)
         if (emitSignals)
             emit captureSnapshot();
         return true;
-    case Qt::Key_P:
+    case Qt::Key_4:
         if (emitSignals)
             emit togglePreview();
         return true;
@@ -195,7 +163,6 @@ bool HidInputRouter::handleKey(QKeyEvent *event, bool emitSignals)
         return true;
     case Qt::Key_H:
     case Qt::Key_Home:
-    case Qt::Key_F1:
         if (emitSignals)
             emit goLive();
         return true;
@@ -221,11 +188,7 @@ bool HidInputRouter::handleKey(QKeyEvent *event, bool emitSignals)
         if (emitSignals)
             emit deleteCurrent();
         return true;
-    case Qt::Key_Up:
-        if (emitSignals)
-            emit moveCurrent(-1);
-        return true;
-    case Qt::Key_Down:
+    case Qt::Key_3:
         if (emitSignals)
             emit moveCurrent(1);
         return true;

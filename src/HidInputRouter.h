@@ -1,8 +1,6 @@
 #pragma once
 
-#include <QElapsedTimer>
 #include <QObject>
-#include <QTimer>
 
 #ifdef Q_OS_WIN
 #  include <windows.h>
@@ -17,7 +15,6 @@ public:
     ~HidInputRouter() override;
 
     bool eventFilter(QObject *watched, QEvent *event) override;
-    Q_INVOKABLE void cancelPedalHold();
 
 #ifdef Q_OS_WIN
     static LRESULT CALLBACK lowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam);
@@ -36,7 +33,6 @@ signals:
     void deleteCurrent();
     void adminExit();
     void pedalTap();
-    void pedalHoldRecord();
     void togglePreview();
 
 private:
@@ -44,15 +40,11 @@ private:
     bool handlePedalKey(int key, bool pressed, bool autoRepeat);
     void handlePedalPress();
     void handlePedalRelease();
-    qint64 pedalHeldMs() const;
 
 #ifdef Q_OS_WIN
     static HidInputRouter *s_instance;
     HHOOK m_keyboardHook = nullptr;
 #endif
 
-    QTimer m_pedalHoldTimer;
-    QElapsedTimer m_pressClock;
     bool m_pedalDown = false;
-    bool m_pedalHoldFired = false;
 };

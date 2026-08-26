@@ -32,6 +32,7 @@ class CaptureController : public QObject
     Q_PROPERTY(QString status READ status NOTIFY statusChanged)
     Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusChanged)
     Q_PROPERTY(bool signalPresent READ signalPresent NOTIFY signalPresentChanged)
+    Q_PROPERTY(bool videoPresent READ videoPresent NOTIFY videoPresentChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
     Q_PROPERTY(QString flashMessage READ flashMessage NOTIFY flashMessageChanged)
 
@@ -52,6 +53,7 @@ public:
     QString status() const { return m_status; }
     QString statusMessage() const { return m_statusMessage; }
     bool signalPresent() const { return m_signalPresent; }
+    bool videoPresent() const { return m_videoPresent; }
     QString lastError() const { return m_lastError; }
     QString flashMessage() const { return m_flashMessage; }
 
@@ -72,6 +74,7 @@ signals:
     void recordingDurationMsChanged();
     void statusChanged();
     void signalPresentChanged();
+    void videoPresentChanged();
     void lastErrorChanged();
     void recordingFinished(const QString &path);
     void snapshotCaptured(const QString &path);
@@ -104,6 +107,9 @@ private:
     bool m_previewActive = false;
     bool m_recording = false;
     bool m_signalPresent = false;
+    bool m_videoPresent = false;
+    int m_frameCounter = 0;
+    int m_blankStreak = 0;
     qint64 m_recordingDurationMs = 0;
     QString m_recordingPath;
     QString m_status = QStringLiteral("nodevice");

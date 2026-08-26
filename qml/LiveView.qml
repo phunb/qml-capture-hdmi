@@ -26,21 +26,16 @@ Item {
     }
 
     function moveSelection(delta) {
-        if (Library.count <= 0)
+        if (!root.previewing || Library.count <= 0)
             return
-        if (root.previewing) {
-            let idx = Library.currentIndex + delta
-            while (idx >= 0 && idx < Library.count && Library.isFolderAt(idx))
-                idx += delta
-            if (idx < 0 || idx >= Library.count)
-                return
-            Library.currentIndex = idx
-            list.positionViewAtIndex(idx, ListView.Contain)
-            playCurrentIfVideo()
+        let idx = Library.currentIndex + delta
+        while (idx >= 0 && idx < Library.count && Library.isFolderAt(idx))
+            idx += delta
+        if (idx < 0 || idx >= Library.count)
             return
-        }
-        Library.moveCurrent(delta)
-        list.positionViewAtIndex(Library.currentIndex, ListView.Contain)
+        Library.currentIndex = idx
+        list.positionViewAtIndex(idx, ListView.Contain)
+        playCurrentIfVideo()
     }
 
     function playCurrentIfVideo() {
@@ -91,7 +86,10 @@ Item {
             Library.openCurrent()
             return
         }
-        enterPreview()
+        lastClip.parent = clipMainSlot
+        previewing = true
+        list.positionViewAtIndex(Library.currentIndex, ListView.Contain)
+        playCurrentIfVideo()
     }
 
     function togglePlay() {
@@ -223,7 +221,7 @@ Item {
                 spacing: 10
 
                 Rectangle {
-                    visible: !root.previewing && Capture.signalPresent
+                    visible: !root.previewing && Capture.videoPresent
                     width: 16
                     height: 16
                     radius: 8
@@ -323,7 +321,7 @@ Item {
                 cacheBuffer: 240
                 reuseItems: false
                 model: Library
-                currentIndex: Library.currentIndex
+                currentIndex: root.previewing ? Library.currentIndex : -1
                 keyNavigationEnabled: false
                 focus: false
                 boundsBehavior: Flickable.StopAtBounds
@@ -412,19 +410,20 @@ Item {
 
                     Rectangle {
                         visible: !row.isFolder && !row.isImage
-                        anchors.right: parent.right
-                        anchors.bottom: parent.bottom
-                        anchors.margins: 8
-                        width: 22
-                        height: 22
-                        radius: 11
+                        width: Math.round(parent.width * 0.25)
+                        height: width
+                        radius: width / 2
+                        anchors.centerIn: parent
                         z: 2
-                        color: "#99000000"
+                        color: "#59000000"
+                        border.width: 2
+                        border.color: "#99f4f7fb"
                         Text {
                             anchors.centerIn: parent
                             text: "▶"
                             color: Theme.text
-                            font.pixelSize: 11
+                            font.pixelSize: Math.round(parent.width * 0.42)
+                            font.bold: true
                         }
                     }
 
@@ -433,16 +432,19 @@ Item {
                         z: 3
                         color: "transparent"
                         radius: 4
-                        border.width: row.index === Library.currentIndex ? 3 : 1
-                        border.color: row.index === Library.currentIndex ? Theme.warning : Theme.bg
+                        border.width: root.previewing && row.index === Library.currentIndex ? 3 : 1
+                        border.color: root.previewing && row.index === Library.currentIndex ? Theme.warning : Theme.bg
                     }
 
                     MouseArea {
                         anchors.fill: parent
                         z: 4
                         onClicked: {
+                            if (!root.previewing)
+                                return
                             Library.currentIndex = row.index
                             list.positionViewAtIndex(row.index, ListView.Contain)
+                            root.playCurrentIfVideo()
                         }
                         onDoubleClicked: root.openCurrent()
                     }

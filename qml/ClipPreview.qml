@@ -13,11 +13,20 @@ Item {
     property real zoom: 1.0
     property bool finished: false
 
+    property bool playIconVisible: false
+
     readonly property bool hasSource: String(source).length > 0
     readonly property bool playing: player.playbackState === MediaPlayer.PlayingState
     readonly property bool atEnd: player.mediaStatus === MediaPlayer.EndOfMedia
             || (player.duration > 0 && player.position >= player.duration - 80)
     readonly property bool showTransport: !root.isImage && !root.crop && root.hasSource
+
+    function bumpPlayIcon() {
+        if (!root.showTransport)
+            return
+        root.playIconVisible = true
+        playIconHide.restart()
+    }
 
     function play() {
         if (root.isImage || !root.hasSource)
@@ -27,10 +36,12 @@ Item {
             player.position = 0
         }
         player.play()
+        bumpPlayIcon()
     }
 
     function pause() {
         player.pause()
+        bumpPlayIcon()
     }
 
     function stop() {
@@ -42,7 +53,7 @@ Item {
         if (root.isImage)
             return
         if (playing)
-            player.pause()
+            pause()
         else
             play()
     }
@@ -82,8 +93,18 @@ Item {
     onSourceChanged: {
         root.zoom = 1.0
         root.finished = false
+        if (root.showTransport)
+            bumpPlayIcon()
+        else
+            root.playIconVisible = false
     }
     onIsImageChanged: root.zoom = 1.0
+    onShowTransportChanged: {
+        if (root.showTransport)
+            bumpPlayIcon()
+        else
+            root.playIconVisible = false
+    }
 
     Item {
         id: imageViewport
@@ -131,6 +152,7 @@ Item {
             if (mediaStatus === MediaPlayer.EndOfMedia) {
                 root.finished = true
                 player.pause()
+                bumpPlayIcon()
                 return
             }
             if (root.finished)
@@ -153,6 +175,46 @@ Item {
                 return
             if (player.playbackState === MediaPlayer.PlayingState)
                 player.pause()
+        }
+    }
+
+    Timer {
+        id: playIconHide
+        interval: 2000
+        repeat: false
+        onTriggered: root.playIconVisible = false
+    }
+
+    Item {
+        anchors.fill: videoOut
+        visible: root.showTransport
+        z: 2
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: root.toggle()
+        }
+
+        Rectangle {
+            width: Math.max(64, Math.min(112, parent.width * 0.147))
+            height: width
+            radius: width / 2
+            anchors.centerIn: parent
+            opacity: root.playIconVisible ? 1 : 0
+            color: root.playing ? "#33000000" : "#59000000"
+            border.width: 3
+            border.color: "#99f4f7fb"
+            Behavior on opacity {
+                NumberAnimation { duration: 180 }
+            }
+
+            Text {
+                anchors.centerIn: parent
+                text: root.playing ? "II" : "▶"
+                color: "#f4f7fb"
+                font.pixelSize: Math.round(parent.width * 0.42)
+                font.bold: true
+            }
         }
     }
 
