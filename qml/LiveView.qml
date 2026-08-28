@@ -191,6 +191,32 @@ Item {
         }
 
         Rectangle {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.margins: 20
+            height: usbHint.implicitHeight + 24
+            radius: 8
+            color: Theme.overlay
+            border.color: Theme.warning
+            border.width: 2
+            visible: !AppSettings.storageReady
+            z: 25
+
+            Text {
+                id: usbHint
+                anchors.centerIn: parent
+                width: parent.width - 24
+                text: qsTr("Bạn cần cắm USB để lưu file")
+                color: Theme.warning
+                font.pixelSize: Theme.fontBody
+                font.bold: true
+                wrapMode: Text.WordWrap
+                horizontalAlignment: Text.AlignHCenter
+            }
+        }
+
+        Rectangle {
             id: snapFlash
             anchors.fill: parent
             color: "#88ffffff"

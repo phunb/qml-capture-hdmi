@@ -48,12 +48,23 @@ QCameraFormat bestFormat(const QCameraDevice &device)
         const int pixels = size.width() * size.height();
         const int fps = qRound(format.maxFrameRate());
         int score = pixels + fps * 1000;
+#ifdef HDMI_KIOSK_PI
+        if (size.width() == 1280 && size.height() == 720)
+            score += 2'000'000;
+        else if (size.width() == 1920 && size.height() == 1080)
+            score += 200'000;
+        if (fps >= 25 && fps <= 30)
+            score += 80'000;
+        if (fps > 35)
+            score -= 40'000;
+#else
         if (size.width() == 1920 && size.height() == 1080)
             score += 2'000'000;
         else if (size.width() == 1280 && size.height() == 720)
             score += 500'000;
         if (fps >= 50)
             score += 50'000;
+#endif
         if (score > bestScore) {
             bestScore = score;
             best = format;
@@ -243,6 +254,10 @@ bool CaptureController::startRecording()
 {
     if (m_recording)
         return true;
+    if (!m_settings->storageReady()) {
+        showFlash(tr("Bạn cần cắm USB để lưu file"));
+        return false;
+    }
     if (!hasDevice()) {
         setError(tr("Không có thiết bị HDMI để ghi."));
         return false;
@@ -261,6 +276,10 @@ bool CaptureController::startRecording()
         m_camera.start();
 
     m_recordingPath = m_recordings->createNewRecordingPath();
+    if (m_recordingPath.isEmpty()) {
+        showFlash(tr("Bạn cần cắm USB để lưu file"));
+        return false;
+    }
     m_settings->setDirectoryLocked(true);
     m_recorder.setOutputLocation(QUrl::fromLocalFile(m_recordingPath));
     m_recorder.record();
@@ -289,6 +308,10 @@ void CaptureController::toggleRecording()
 
 bool CaptureController::captureSnapshot()
 {
+    if (!m_settings->storageReady()) {
+        showFlash(tr("Bạn cần cắm USB để lưu file"));
+        return false;
+    }
     if (!hasDevice()) {
         showFlash(tr("Không có thiết bị HDMI để chụp."));
         return false;
@@ -313,6 +336,10 @@ bool CaptureController::captureSnapshot()
     }
 
     const QString path = m_recordings->createNewCapturePath();
+    if (path.isEmpty()) {
+        showFlash(tr("Bạn cần cắm USB để lưu file"));
+        return false;
+    }
     if (!image.save(path, "JPG", 95)) {
         showFlash(tr("Không lưu được ảnh chụp."));
         return false;
@@ -409,7 +436,11 @@ void CaptureController::configureRecorder()
     format.setVideoCodec(QMediaFormat::VideoCodec::H264);
     format.setAudioCodec(QMediaFormat::AudioCodec::Unspecified);
     m_recorder.setMediaFormat(format);
+#ifdef HDMI_KIOSK_PI
+    m_recorder.setQuality(QMediaRecorder::NormalQuality);
+#else
     m_recorder.setQuality(QMediaRecorder::HighQuality);
+#endif
 }
 
 void CaptureController::updateStatus()

@@ -4,9 +4,6 @@ set -euo pipefail
 
 APP="${HDMI_KIOSK_APP:-/opt/hdmi-kiosk/bin/hdmi-kiosk}"
 QT_ROOT="${HDMI_KIOSK_QT:-/opt/Qt/6.8.3/gcc_64}"
-OUT_DIR="${HDMI_KIOSK_OUTPUT_DIR:-$HOME/output}"
-
-mkdir -p "$OUT_DIR"
 
 if [[ -z "${XDG_RUNTIME_DIR:-}" ]]; then
   export XDG_RUNTIME_DIR="/run/user/$(id -u)"
@@ -20,7 +17,6 @@ export QT_PLUGIN_PATH="$QT_ROOT/plugins"
 export QML_IMPORT_PATH="$QT_ROOT/qml"
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland}"
 export QT_MEDIA_BACKEND="${QT_MEDIA_BACKEND:-ffmpeg}"
-export HDMI_KIOSK_OUTPUT_DIR="$OUT_DIR"
 
 # Không cho máy ngủ khi đang xem tín hiệu y tế
 command -v xset >/dev/null 2>&1 && xset -dpms s off s noblank || true

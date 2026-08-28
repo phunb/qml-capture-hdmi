@@ -1,0 +1,110 @@
+HDMI Kiosk trên Raspberry Pi OS Desktop (PIXEL)
+===============================================
+
+KHÔNG chạy: sudo ./deploy/raspberrypi/install-raspberry-pi-kiosk.sh
+Script đó tắt desktop và boot eglfs (dành cho Lite).
+
+Cùng source, build trên Pi, mở như cửa sổ app trên PIXEL.
+
+
+Bước 1 — Flash Desktop 64-bit
+-----------------------------
+1. Raspberry Pi Imager: https://www.raspberrypi.com/software/
+2. Device: Raspberry Pi 4
+3. OS: Raspberry Pi OS (64-bit)  ← bản có desktop, không phải Lite
+4. Bánh răng:
+   - hostname, user (ví dụ pi), mật khẩu
+   - bật SSH (để copy file từ PC)
+   - Wi‑Fi nếu không dùng LAN
+5. Ghi thẻ, cắm Pi, màn hình vào HDMI của Pi, nguồn 5V/3A
+6. Boot xong: wizard Desktop (quốc gia, cập nhật). Có thể Skip update cho nhanh.
+
+
+Bước 2 — Copy project từ Windows
+--------------------------------
+PowerShell, trong thư mục qml-capture-hdmi:
+
+  .\deploy\raspberrypi\copy-to-pi.ps1 -PiHost 192.168.x.x -PiUser pi
+
+Hoặc thủ công:
+
+  scp -r CMakeLists.txt src qml deploy pi@192.168.x.x:~/qml-capture-hdmi
+
+Hoặc trên Desktop Pi: USB chép thư mục, hoặc Git clone.
+
+
+Bước 3 — Terminal trên Pi (hoặc SSH)
+------------------------------------
+Mở Terminal trên PIXEL, hoặc:
+
+  ssh pi@192.168.x.x
+
+Rồi:
+
+  cd ~/qml-capture-hdmi
+  sed -i 's/\r$//' deploy/raspberrypi/*.sh
+  chmod +x deploy/raspberrypi/*.sh
+  ./deploy/raspberrypi/build-on-pi.sh
+
+Lần đầu sẽ hỏi sudo (cài Qt6, cmake). Build vài phút.
+Nếu RAM 2GB: đóng Chromium trước khi build.
+
+
+Bước 4 — Quyền camera / phím
+----------------------------
+  sudo usermod -aG video,render,input,plugdev,audio $USER
+  reboot
+
+Bắt buộc reboot (hoặc logout) rồi login lại thì USB capture mới mở được.
+
+
+Bước 5 — Cắm phần cứng rồi chạy
+-------------------------------
+- Máy soi / HDMI → USB capture → cổng USB3 (xanh) của Pi
+- Pedal / keypad USB
+- Dongle bàn phím không dây: cổng USB2 (đen)
+
+Trong Terminal:
+
+  cd ~/qml-capture-hdmi
+  ./deploy/raspberrypi/run-on-desktop.sh
+
+Hoặc:
+
+  ./build-pi/hdmi-kiosk
+
+Không set QT_QPA_PLATFORM=eglfs trên Desktop.
+
+
+Bước 6 — Kiểm tra
+-----------------
+- Cửa sổ HDMI Kiosk hiện trên PIXEL (giống app Windows, ưu tiên 720p)
+- ls /dev/video*   → phải có video0 khi đã cắm capture
+- Log: ~/.local/share/HdmiKiosk/hdmi-kiosk.log
+- Video: USB (`recorder/output` trên ổ USB). Không USB thì không ghi được.
+- Thoát kiosk: Ctrl+Alt+Shift+Q
+
+
+Tự mở khi login Desktop (tuỳ chọn)
+----------------------------------
+  mkdir -p ~/.config/autostart
+  nano ~/.config/autostart/hdmi-kiosk.desktop
+
+Dán (sửa đường dẫn user nếu không phải pi):
+
+  [Desktop Entry]
+  Type=Application
+  Name=HDMI Kiosk
+  Exec=/home/pi/qml-capture-hdmi/build-pi/hdmi-kiosk
+  X-GNOME-Autostart-enabled=true
+
+Logout/login lại. Vẫn còn thanh PIXEL phía trên — đó là Desktop, khác Lite fullscreen.
+
+
+Nếu app không thấy camera
+-------------------------
+  v4l2-ctl --list-devices
+  groups    # phải có chữ video
+  dmesg | tail
+
+Capture USB3 + dongle 2.4GHz: dongle cắm USB2, capture USB3.

@@ -226,6 +226,19 @@ void VideoLibraryModel::moveCurrent(int delta)
 void VideoLibraryModel::reload()
 {
     const QString currentPath = isValidIndex(m_currentIndex) ? m_items.at(m_currentIndex).filePath : QString();
+    if (m_recordings->directory().isEmpty()) {
+        beginResetModel();
+        m_items.clear();
+        endResetModel();
+        m_currentIndex = 0;
+        m_currentPath.clear();
+        watchCurrentPath();
+        emit countChanged();
+        emit currentIndexChanged();
+        emit pathChanged();
+        return;
+    }
+
     QDir dir(m_currentPath);
     if (!dir.exists()) {
         m_currentPath = normalized(m_recordings->directory());
@@ -290,6 +303,8 @@ bool VideoLibraryModel::isValidIndex(int index) const
 bool VideoLibraryModel::isUnderRoot(const QString &path) const
 {
     const QString root = normalized(m_recordings->directory());
+    if (root.isEmpty())
+        return false;
     const QString candidate = normalized(path);
     return candidate == root || candidate.startsWith(root + QLatin1Char('/'));
 }
@@ -305,5 +320,7 @@ void VideoLibraryModel::watchCurrentPath()
 
 QString VideoLibraryModel::normalized(const QString &path) const
 {
+    if (path.isEmpty())
+        return {};
     return QDir::cleanPath(QFileInfo(path).absoluteFilePath());
 }

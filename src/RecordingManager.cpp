@@ -21,15 +21,17 @@ RecordingManager::RecordingManager(const QString &directory, QObject *parent)
 
 void RecordingManager::setDirectory(const QString &directory)
 {
-    if (directory.isEmpty() || m_directory == directory)
+    if (m_directory == directory)
         return;
 
     if (!m_directory.isEmpty())
         m_watcher->removePath(m_directory);
 
     m_directory = directory;
-    QDir().mkpath(m_directory);
-    watchDirectory();
+    if (!m_directory.isEmpty()) {
+        QDir().mkpath(m_directory);
+        watchDirectory();
+    }
     emit directoryChanged();
     emit recordingsChanged();
     emit storageChanged();
@@ -37,6 +39,9 @@ void RecordingManager::setDirectory(const QString &directory)
 
 QStringList RecordingManager::listRecordings() const
 {
+    if (m_directory.isEmpty())
+        return {};
+
     QDir dir(m_directory);
     const QStringList files = dir.entryList(
         {QStringLiteral("*.mp4"), QStringLiteral("*.mkv"), QStringLiteral("*.mov"),
@@ -53,6 +58,8 @@ QStringList RecordingManager::listRecordings() const
 
 QString RecordingManager::createNewRecordingPath()
 {
+    if (m_directory.isEmpty())
+        return {};
     QDir().mkpath(m_directory);
     const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd_HH-mm-ss"));
     QString path = QDir(m_directory).filePath(QStringLiteral("record_%1.mp4").arg(stamp));
@@ -66,6 +73,8 @@ QString RecordingManager::createNewRecordingPath()
 
 QString RecordingManager::createNewCapturePath()
 {
+    if (m_directory.isEmpty())
+        return {};
     QDir().mkpath(m_directory);
     const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd_HH-mm-ss"));
     QString path = QDir(m_directory).filePath(QStringLiteral("capture_%1.jpg").arg(stamp));
@@ -114,6 +123,9 @@ QStorageInfo storageFor(const QString &directory)
 
 qint64 RecordingManager::freeBytes() const
 {
+    if (m_directory.isEmpty())
+        return -1;
+
     const QStorageInfo info = storageFor(m_directory);
     if (!info.isValid() || !info.isReady())
         return -1;
@@ -130,6 +142,8 @@ QString RecordingManager::freeSpaceText() const
 
 bool RecordingManager::hasEnoughSpace(qint64 minimumBytes) const
 {
+    if (m_directory.isEmpty())
+        return false;
     const qint64 free = freeBytes();
     if (free < 0)
         return QDir().mkpath(m_directory);

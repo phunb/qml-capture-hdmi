@@ -1,0 +1,4 @@
+*.sh text eol=lf
+deploy/raspberrypi/*.sh text eol=lf
+deploy/linux/*.sh text eol=lf
+*.ps1 text eol=crlf

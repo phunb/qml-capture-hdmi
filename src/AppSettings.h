@@ -14,6 +14,7 @@ class AppSettings : public QObject
     Q_PROPERTY(int maxRecordingMinutes READ maxRecordingMinutes WRITE setMaxRecordingMinutes NOTIFY maxRecordingMinutesChanged)
     Q_PROPERTY(qint64 minFreeBytes READ minFreeBytes CONSTANT)
     Q_PROPERTY(bool usingUsb READ usingUsb NOTIFY recordingsDirChanged)
+    Q_PROPERTY(bool storageReady READ storageReady NOTIFY recordingsDirChanged)
     Q_PROPERTY(QString storageLabel READ storageLabel NOTIFY recordingsDirChanged)
 
 public:
@@ -34,6 +35,7 @@ public:
     qint64 minFreeBytes() const { return 500LL * 1024 * 1024; }
 
     bool usingUsb() const { return m_usingUsb; }
+    bool storageReady() const { return m_usingUsb && !m_recordingsDir.isEmpty(); }
     QString storageLabel() const { return m_storageLabel; }
 
     Q_INVOKABLE QUrl recordingsDirUrl() const;

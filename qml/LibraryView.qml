@@ -56,9 +56,11 @@ Item {
                     Layout.fillWidth: true
                 }
                 Text {
-                    text: qsTr("%1   •   Còn trống: %2")
-                          .arg(AppSettings.storageLabel, Recordings.freeSpaceText)
-                    color: AppSettings.usingUsb ? Theme.live : Theme.muted
+                    text: AppSettings.storageReady
+                          ? qsTr("%1   •   Còn trống: %2")
+                            .arg(AppSettings.storageLabel, Recordings.freeSpaceText)
+                          : qsTr("Bạn cần cắm USB để lưu file")
+                    color: AppSettings.storageReady ? Theme.live : Theme.warning
                     font.pixelSize: Theme.fontSmall
                     elide: Text.ElideMiddle
                     Layout.fillWidth: true
@@ -212,8 +214,10 @@ Item {
             Text {
                 visible: Library.count === 0
                 anchors.centerIn: parent
-                text: qsTr("Thư mục trống.\n%1").arg(Library.rootPath)
-                color: Theme.muted
+                text: AppSettings.storageReady
+                      ? qsTr("Thư mục trống.\n%1").arg(Library.rootPath)
+                      : qsTr("Bạn cần cắm USB để lưu file")
+                color: AppSettings.storageReady ? Theme.muted : Theme.warning
                 font.pixelSize: Theme.fontBody
                 horizontalAlignment: Text.AlignHCenter
             }

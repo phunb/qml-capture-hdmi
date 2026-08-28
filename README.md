@@ -91,10 +91,7 @@ Image `ubuntu:24.04`, Qt 6.8, `QT_QPA_PLATFORM=offscreen`. Test `smoke-load` tho
 
 Chạy `hdmi-kiosk`. Cắm nguồn HDMI vào capture trước hoặc sau đều được (app theo dõi hotplug).
 
-Video lưu tại:
-
-- Windows: `%USERPROFILE%\Videos\HdmiKiosk\`
-- Linux: `~/Videos/HdmiKiosk/`
+Video lưu **chỉ trên USB** (thư mục `recorder/output` trên ổ USB). Không cắm USB thì app báo *Bạn cần cắm USB để lưu file* và không ghi/chụp được.
 
 Log: thư mục AppLocalData / `~/.local/share/HdmiKiosk/hdmi-kiosk.log`
 
@@ -150,6 +147,26 @@ cage -s -- /path/to/hdmi-kiosk
 ```
 
 Xem `deploy/linux/kiosk-setup.sh`.
+
+### Raspberry Pi 4 (không desktop)
+
+Binary Windows không chạy trên Pi. Flash **Raspberry Pi OS Lite 64-bit**, copy source, build trên Pi:
+
+```powershell
+.\deploy\raspberrypi\copy-to-pi.ps1 -PiHost 192.168.x.x -PiUser pi
+```
+
+Trên Pi:
+
+```bash
+cd ~/qml-capture-hdmi
+chmod +x deploy/raspberrypi/*.sh
+sudo ./deploy/raspberrypi/install-raspberry-pi-kiosk.sh
+sudo reboot
+```
+
+Chi tiết Lite: `deploy/raspberrypi/README.txt`.
+Chi tiết Desktop PIXEL: `deploy/raspberrypi/DESKTOP.txt`. App chạy cửa sổ trên desktop (`run-on-desktop.sh`), không cài script kiosk Lite.
 
 ## Bảo trì
 

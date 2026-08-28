@@ -14,8 +14,9 @@ if(MSVC)
 endif()
 
 option(HDMI_KIOSK_CONSOLE "Show a debug console on Windows" OFF)
+option(HDMI_KIOSK_PI "Raspberry Pi defaults: prefer 720p30 and lighter recording" OFF)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS
+find_package(Qt6 6.4 REQUIRED COMPONENTS
     Core
     Gui
     Qml
@@ -24,7 +25,7 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS
     Multimedia
 )
 
-qt_standard_project_setup(REQUIRES 6.5)
+qt_standard_project_setup(REQUIRES 6.4)
 if(QT_VERSION VERSION_GREATER_EQUAL "6.8.0")
     qt_policy(SET QTP0004 NEW)
 endif()
@@ -85,6 +86,9 @@ endif()
 target_compile_definitions(hdmi-kiosk PRIVATE
     APP_VERSION="${PROJECT_VERSION}"
 )
+if(HDMI_KIOSK_PI)
+    target_compile_definitions(hdmi-kiosk PRIVATE HDMI_KIOSK_PI=1)
+endif()
 
 install(TARGETS hdmi-kiosk
     BUNDLE DESTINATION .
@@ -93,6 +97,7 @@ install(TARGETS hdmi-kiosk
 
 install(DIRECTORY deploy/linux DESTINATION share/hdmi-kiosk)
 install(DIRECTORY deploy/windows DESTINATION share/hdmi-kiosk)
+install(DIRECTORY deploy/raspberrypi DESTINATION share/hdmi-kiosk)
 
 enable_testing()
 add_test(NAME smoke-load COMMAND hdmi-kiosk)

@@ -14,6 +14,6 @@
 # 3) sudo reboot
 #    Máy tự login user kiosk và chạy app trong cage (không desktop).
 #
-# Video lưu: /home/kiosk/output
+# Video lưu: USB (thư mục recorder/output trên ổ USB)
 # Bảo trì: ssh admin@IP
 # Gỡ autostart kiosk: sudo ./deploy/linux/uninstall-ubuntu-kiosk.sh

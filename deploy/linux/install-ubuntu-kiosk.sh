@@ -16,7 +16,6 @@ INSTALL_ROOT="/opt/hdmi-kiosk"
 QT_ROOT="/opt/Qt"
 QT_VERSION="6.8.3"
 QT_PREFIX="$QT_ROOT/$QT_VERSION/gcc_64"
-OUTPUT_DIR="/home/${KIOSK_USER}/output"
 
 echo "==> Nguồn project: $SRC_DIR"
 echo "==> User kiosk: $KIOSK_USER"
@@ -58,8 +57,7 @@ if ! id "$KIOSK_USER" >/dev/null 2>&1; then
 fi
 usermod -aG video,render,input,plugdev,audio "$KIOSK_USER"
 
-install -d -m 0755 "$INSTALL_ROOT/bin" "$QT_ROOT" "$OUTPUT_DIR"
-chown -R "${KIOSK_USER}:${KIOSK_USER}" "$OUTPUT_DIR"
+install -d -m 0755 "$INSTALL_ROOT/bin" "$QT_ROOT"
 
 if [[ -f "$SCRIPT_DIR/99-hdmi-capture.rules" ]]; then
   install -m 0644 "$SCRIPT_DIR/99-hdmi-capture.rules" /etc/udev/rules.d/99-hdmi-capture.rules
@@ -124,7 +122,6 @@ HandlePowerKey=ignore
 EOF
 
 cat >/etc/environment.d/hdmi-kiosk.conf <<EOF
-HDMI_KIOSK_OUTPUT_DIR=${OUTPUT_DIR}
 HDMI_KIOSK_QT=${QT_PREFIX}
 EOF
 
@@ -132,7 +129,7 @@ echo
 echo "==== ĐÃ CÀI UBUNTU KIOSK ===="
 echo "User:     $KIOSK_USER"
 echo "App:      $INSTALL_ROOT/bin/hdmi-kiosk"
-echo "Video:    $OUTPUT_DIR"
+echo "Video:    USB (thư mục recorder/output trên USB)"
 echo "Bảo trì:  SSH vào máy (user $KIOSK_USER hoặc user admin có sudo)"
 echo "Thoát GUI: Ctrl+Alt+Shift+Q (rồi login TTY)"
 echo

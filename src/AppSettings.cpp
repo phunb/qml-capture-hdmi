@@ -1,7 +1,6 @@
 #include "AppSettings.h"
 
 #include <QDir>
-#include <QFileInfo>
 #include <QSettings>
 #include <QStorageInfo>
 #include <QUrl>
@@ -13,6 +12,21 @@
 
 namespace {
 
+const QString kNeedUsb = QStringLiteral("Bạn cần cắm USB để lưu file");
+
+bool isOsVolume(const QString &rootPath)
+{
+    const QString root = QDir::cleanPath(rootPath);
+#ifdef Q_OS_WIN
+    return root.compare(QLatin1String("C:"), Qt::CaseInsensitive) == 0
+        || root.compare(QLatin1String("C:/"), Qt::CaseInsensitive) == 0;
+#else
+    return root == QLatin1String("/")
+        || root == QLatin1String("/boot")
+        || root.startsWith(QLatin1String("/boot/"));
+#endif
+}
+
 bool isRemovableVolume(const QStorageInfo &vol)
 {
 #ifdef Q_OS_WIN
@@ -22,6 +36,8 @@ bool isRemovableVolume(const QStorageInfo &vol)
     const UINT type = GetDriveTypeW(reinterpret_cast<LPCWSTR>(root.utf16()));
     return type == DRIVE_REMOVABLE;
 #else
+    if (isOsVolume(vol.rootPath()))
+        return false;
     const QString root = vol.rootPath();
     if (root.startsWith(QLatin1String("/media/")) || root.startsWith(QLatin1String("/run/media/")))
         return true;
@@ -30,29 +46,9 @@ bool isRemovableVolume(const QStorageInfo &vol)
 #endif
 }
 
-bool isSystemRoot(const QString &rootPath)
-{
-    const QString root = QDir::cleanPath(rootPath);
-#ifdef Q_OS_WIN
-    return root.compare(QLatin1String("C:"), Qt::CaseInsensitive) == 0
-        || root.compare(QLatin1String("C:/"), Qt::CaseInsensitive) == 0;
-#else
-    return root == QLatin1String("/");
-#endif
-}
-
 QString recorderOutputOn(const QString &rootPath)
 {
     return QDir(rootPath).filePath(QStringLiteral("recorder/output"));
-}
-
-QString localFallbackDir()
-{
-#ifdef Q_OS_WIN
-    return QStringLiteral("C:/recorder/output");
-#else
-    return QDir::home().filePath(QStringLiteral("recorder/output"));
-#endif
 }
 
 QString volumeLabel(const QStorageInfo &vol)
@@ -95,12 +91,7 @@ void AppSettings::setKioskMode(bool enabled)
 
 void AppSettings::setRecordingsDir(const QString &dir)
 {
-    if (dir.isEmpty() || m_recordingsDir == dir)
-        return;
-    m_recordingsDir = dir;
-    QDir().mkpath(m_recordingsDir);
-    save();
-    emit recordingsDirChanged();
+    Q_UNUSED(dir)
 }
 
 void AppSettings::setPreferredDeviceId(const QString &id)
@@ -142,42 +133,45 @@ void AppSettings::refreshOutputDir()
     bool usb = false;
     QString label;
     QString dir = resolveOutputDir(&usb, &label);
-    if (!QDir().mkpath(dir)) {
-        dir = QDir::home().filePath(QStringLiteral("recorder/output"));
+    if (usb && !dir.isEmpty() && !QDir().mkpath(dir)) {
         usb = false;
-        label = QDir::toNativeSeparators(dir);
-        QDir().mkpath(dir);
+        dir.clear();
+        label = kNeedUsb;
     }
+    if (!usb) {
+        dir.clear();
+        label = kNeedUsb;
+    }
+
     const bool changed = (m_recordingsDir != dir || m_usingUsb != usb || m_storageLabel != label);
     m_usingUsb = usb;
     m_storageLabel = label;
     if (m_recordingsDir != dir) {
         m_recordingsDir = dir;
-        QDir().mkpath(m_recordingsDir);
         save();
         emit recordingsDirChanged();
     } else if (changed) {
         emit recordingsDirChanged();
-    } else {
-        QDir().mkpath(m_recordingsDir);
     }
 }
 
 QString AppSettings::resolveOutputDir(bool *usingUsb, QString *label) const
 {
-    const QString fromEnv = qEnvironmentVariable("HDMI_KIOSK_OUTPUT_DIR");
-    if (!fromEnv.isEmpty()) {
-        if (usingUsb)
-            *usingUsb = false;
-        if (label)
-            *label = QDir::toNativeSeparators(fromEnv);
-        return fromEnv;
+    if (qEnvironmentVariableIntValue("HDMI_KIOSK_SMOKE_TEST") > 0) {
+        const QString fromEnv = qEnvironmentVariable("HDMI_KIOSK_OUTPUT_DIR");
+        if (!fromEnv.isEmpty()) {
+            if (usingUsb)
+                *usingUsb = true;
+            if (label)
+                *label = QDir::toNativeSeparators(fromEnv);
+            return fromEnv;
+        }
     }
 
     for (const QStorageInfo &vol : QStorageInfo::mountedVolumes()) {
         if (!vol.isValid() || !vol.isReady() || vol.isReadOnly() || !isRemovableVolume(vol))
             continue;
-        if (isSystemRoot(vol.rootPath()))
+        if (isOsVolume(vol.rootPath()))
             continue;
 
         const QString dir = recorderOutputOn(vol.rootPath());
@@ -188,12 +182,11 @@ QString AppSettings::resolveOutputDir(bool *usingUsb, QString *label) const
         return dir;
     }
 
-    const QString fallback = localFallbackDir();
     if (usingUsb)
         *usingUsb = false;
     if (label)
-        *label = QDir::toNativeSeparators(fallback);
-    return fallback;
+        *label = kNeedUsb;
+    return {};
 }
 
 void AppSettings::load()
