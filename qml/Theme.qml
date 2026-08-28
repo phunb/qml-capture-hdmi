@@ -9,7 +9,7 @@ QtObject {
     readonly property color muted: "#9aa6b8"
     readonly property color accent: "#ef4455"
     readonly property color accentDark: "#b42334"
-    readonly property color live: "#3ddc84"
+    readonly property color live: "#ef4455"
     readonly property color warning: "#f5c542"
     readonly property color overlay: "#cc07090c"
     readonly property int touch: 96

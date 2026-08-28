@@ -76,10 +76,18 @@ bool HidInputRouter::eventFilter(QObject *watched, QEvent *event)
         auto *key = static_cast<QKeyEvent *>(event);
         if (handlePedalKey(int(key->key()), event->type() == QEvent::KeyPress, key->isAutoRepeat()))
             return true;
+        if (handleDigitChord(int(key->key()), event->type() == QEvent::KeyPress, key->isAutoRepeat(),
+                             event->type() == QEvent::KeyPress))
+            return true;
     }
 
     if (event->type() == QEvent::ShortcutOverride) {
-        if (handleKey(static_cast<QKeyEvent *>(event), false)) {
+        auto *key = static_cast<QKeyEvent *>(event);
+        if (key->key() == Qt::Key_3 || key->key() == Qt::Key_4) {
+            event->accept();
+            return true;
+        }
+        if (handleKey(key, false)) {
             event->accept();
             return true;
         }
@@ -120,6 +128,41 @@ void HidInputRouter::handlePedalRelease()
     m_pedalDown = false;
 }
 
+bool HidInputRouter::handleDigitChord(int key, bool pressed, bool autoRepeat, bool emitSignals)
+{
+    if (key != Qt::Key_3 && key != Qt::Key_4)
+        return false;
+    if (autoRepeat)
+        return true;
+
+    if (key == Qt::Key_3)
+        m_key3Down = pressed;
+    else
+        m_key4Down = pressed;
+
+    if (!pressed) {
+        if (!m_key3Down && !m_key4Down)
+            m_chord34Fired = false;
+        return true;
+    }
+
+    if (m_key3Down && m_key4Down) {
+        if (emitSignals && !m_chord34Fired) {
+            m_chord34Fired = true;
+            emit goLive();
+        }
+        return true;
+    }
+
+    if (emitSignals && !m_chord34Fired) {
+        if (key == Qt::Key_3)
+            emit moveCurrent(1);
+        else
+            emit togglePreview();
+    }
+    return true;
+}
+
 bool HidInputRouter::handleKey(QKeyEvent *event, bool emitSignals)
 {
     if (event->isAutoRepeat())
@@ -152,10 +195,6 @@ bool HidInputRouter::handleKey(QKeyEvent *event, bool emitSignals)
         if (emitSignals)
             emit captureSnapshot();
         return true;
-    case Qt::Key_4:
-        if (emitSignals)
-            emit togglePreview();
-        return true;
     case Qt::Key_L:
     case Qt::Key_F2:
         if (emitSignals)
@@ -187,10 +226,6 @@ bool HidInputRouter::handleKey(QKeyEvent *event, bool emitSignals)
     case Qt::Key_Delete:
         if (emitSignals)
             emit deleteCurrent();
-        return true;
-    case Qt::Key_3:
-        if (emitSignals)
-            emit moveCurrent(1);
         return true;
     case Qt::Key_Left:
         if (emitSignals)

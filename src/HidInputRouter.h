@@ -38,6 +38,7 @@ signals:
 private:
     bool handleKey(class QKeyEvent *event, bool emitSignals = true);
     bool handlePedalKey(int key, bool pressed, bool autoRepeat);
+    bool handleDigitChord(int key, bool pressed, bool autoRepeat, bool emitSignals);
     void handlePedalPress();
     void handlePedalRelease();
 
@@ -47,4 +48,7 @@ private:
 #endif
 
     bool m_pedalDown = false;
+    bool m_key3Down = false;
+    bool m_key4Down = false;
+    bool m_chord34Fired = false;
 };

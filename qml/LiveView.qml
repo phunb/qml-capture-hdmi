@@ -228,7 +228,7 @@ Item {
                     color: Theme.live
                     anchors.verticalCenter: parent.verticalCenter
                     border.width: 2
-                    border.color: "#b7ffd4"
+                    border.color: "#ffc4c8"
                 }
 
                 Text {
