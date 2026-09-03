@@ -44,11 +44,10 @@ qt_add_qml_module(hdmi-kiosk
         qml/KioskButton.qml
         qml/ConfirmDialog.qml
         qml/LiveView.qml
-        qml/LibraryView.qml
-        qml/PlaybackView.qml
         qml/NoSignalOverlay.qml
-        qml/ControlBar.qml
         qml/ClipPreview.qml
+        qml/CopyProgressOverlay.qml
+        qml/KioskToast.qml
     SOURCES
         src/AppSettings.h
         src/AppSettings.cpp

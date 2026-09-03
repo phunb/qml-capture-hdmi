@@ -68,10 +68,7 @@ int main(int argc, char *argv[])
     QQuickStyle::setStyle(QStringLiteral("Basic"));
 
     AppSettings settings;
-    RecordingManager recordings(settings.recordingsDir());
-    QObject::connect(&settings, &AppSettings::recordingsDirChanged, &recordings, [&]() {
-        recordings.setDirectory(settings.recordingsDir());
-    });
+    RecordingManager recordings(&settings);
 
     CaptureController capture(&settings, &recordings);
     VideoLibraryModel library(&recordings);
@@ -80,13 +77,11 @@ int main(int argc, char *argv[])
     kiosk.setLocked(settings.kioskMode());
 
     QQmlApplicationEngine engine;
-    engine.rootContext()->setContextProperty(QStringLiteral("AppSettings"), &settings);
     engine.rootContext()->setContextProperty(QStringLiteral("Capture"), &capture);
     engine.rootContext()->setContextProperty(QStringLiteral("Library"), &library);
     engine.rootContext()->setContextProperty(QStringLiteral("Kiosk"), &kiosk);
     engine.rootContext()->setContextProperty(QStringLiteral("HidInput"), &hidInput);
     engine.rootContext()->setContextProperty(QStringLiteral("Recordings"), &recordings);
-    engine.rootContext()->setContextProperty(QStringLiteral("AppVersion"), QStringLiteral(APP_VERSION));
 
     QObject::connect(
         &engine,

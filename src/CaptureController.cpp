@@ -3,16 +3,13 @@
 #include "AppSettings.h"
 #include "RecordingManager.h"
 
-#include <QCameraDevice>
 #include <QCameraFormat>
 #include <QColor>
 #include <QDir>
-#include <QFileInfo>
 #include <QImage>
 #include <QMediaFormat>
 #include <QSize>
 #include <QUrl>
-#include <QVideoFrame>
 #include <QVideoSink>
 
 namespace {
@@ -138,6 +135,7 @@ CaptureController::CaptureController(AppSettings *settings, RecordingManager *re
         if (state == QMediaRecorder::StoppedState && !m_recordingPath.isEmpty()) {
             emit recordingFinished(m_recordingPath);
             m_recordings->notifyChanged();
+            m_recordings->mirrorToUsb(m_recordingPath);
         }
         updateStatus();
     });
@@ -204,14 +202,11 @@ QString CaptureController::currentDeviceName() const
 
 void CaptureController::setPreviewOutput(QObject *output)
 {
-    m_previewOutput = output;
     m_session.setVideoOutput(output);
     if (!output)
         return;
 
     const auto connectSink = [this, output]() {
-        if (!output)
-            return;
         if (QVideoSink *sink = output->property("videoSink").value<QVideoSink *>()) {
             connect(sink, &QVideoSink::videoFrameChanged, this, &CaptureController::onFrame, Qt::UniqueConnection);
         }
@@ -230,13 +225,6 @@ void CaptureController::startPreview()
         }
     }
     m_camera.start();
-}
-
-void CaptureController::stopPreview()
-{
-    if (m_recording)
-        return;
-    m_camera.stop();
 }
 
 bool CaptureController::startRecording()
@@ -261,11 +249,11 @@ bool CaptureController::startRecording()
         m_camera.start();
 
     m_recordingPath = m_recordings->createNewRecordingPath();
-    m_settings->setDirectoryLocked(true);
+    m_recordings->setWriting(true);
     m_recorder.setOutputLocation(QUrl::fromLocalFile(m_recordingPath));
     m_recorder.record();
     if (m_recorder.error() != QMediaRecorder::NoError) {
-        m_settings->setDirectoryLocked(false);
+        m_recordings->setWriting(false);
         setError(m_recorder.errorString());
         return false;
     }
@@ -276,7 +264,7 @@ void CaptureController::stopRecording()
 {
     if (m_recorder.recorderState() == QMediaRecorder::RecordingState)
         m_recorder.stop();
-    m_settings->setDirectoryLocked(false);
+    m_recordings->setWriting(false);
 }
 
 void CaptureController::toggleRecording()
@@ -319,6 +307,7 @@ bool CaptureController::captureSnapshot()
     }
 
     m_recordings->notifyChanged();
+    m_recordings->mirrorToUsb(path);
     emit snapshotCaptured(path);
     showFlash(tr("Đã chụp"));
     return true;
@@ -461,7 +450,7 @@ void CaptureController::setRecording(bool recording)
     m_recording = recording;
     if (!recording) {
         m_recordingDurationMs = 0;
-        m_settings->setDirectoryLocked(false);
+        m_recordings->setWriting(false);
     }
     emit recordingChanged();
     emit recordingDurationMsChanged();
@@ -529,5 +518,5 @@ void CaptureController::showFlash(const QString &message)
 {
     m_flashMessage = message;
     emit flashMessageChanged();
-    m_flashTimer.start(2500);
+    m_flashTimer.start(3200);
 }

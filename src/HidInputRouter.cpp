@@ -2,11 +2,18 @@
 
 #include <QGuiApplication>
 #include <QKeyEvent>
+#include <QMetaObject>
 #include <QtGlobal>
 
 namespace {
 constexpr int kPedalPressVk = 0x43;   // ElfKey Double trigger: press = C
 constexpr int kPedalReleaseVk = 0x42; // ElfKey Double trigger: release = B
+constexpr int kBit1 = 1 << 0;
+constexpr int kBit2 = 1 << 1;
+constexpr int kBit3 = 1 << 2;
+constexpr int kBit4 = 1 << 3;
+constexpr int kChord234 = kBit2 | kBit3 | kBit4;
+constexpr int kChord1234 = kBit1 | kBit2 | kBit3 | kBit4;
 }
 
 #ifdef Q_OS_WIN
@@ -17,6 +24,9 @@ HidInputRouter::HidInputRouter(QObject *parent)
     : QObject(parent)
 {
     qApp->installEventFilter(this);
+    m_chordTimer.setSingleShot(true);
+    m_chordTimer.setInterval(160);
+    connect(&m_chordTimer, &QTimer::timeout, this, &HidInputRouter::flushDigitChord);
 
 #ifdef Q_OS_WIN
     s_instance = this;
@@ -76,14 +86,13 @@ bool HidInputRouter::eventFilter(QObject *watched, QEvent *event)
         auto *key = static_cast<QKeyEvent *>(event);
         if (handlePedalKey(int(key->key()), event->type() == QEvent::KeyPress, key->isAutoRepeat()))
             return true;
-        if (handleDigitChord(int(key->key()), event->type() == QEvent::KeyPress, key->isAutoRepeat(),
-                             event->type() == QEvent::KeyPress))
+        if (handleDigitChord(int(key->key()), event->type() == QEvent::KeyPress, key->isAutoRepeat()))
             return true;
     }
 
     if (event->type() == QEvent::ShortcutOverride) {
         auto *key = static_cast<QKeyEvent *>(event);
-        if (key->key() == Qt::Key_3 || key->key() == Qt::Key_4) {
+        if (digitBit(int(key->key())) != 0) {
             event->accept();
             return true;
         }
@@ -128,39 +137,91 @@ void HidInputRouter::handlePedalRelease()
     m_pedalDown = false;
 }
 
-bool HidInputRouter::handleDigitChord(int key, bool pressed, bool autoRepeat, bool emitSignals)
+int HidInputRouter::digitBit(int key)
 {
-    if (key != Qt::Key_3 && key != Qt::Key_4)
+    switch (key) {
+    case Qt::Key_1: return kBit1;
+    case Qt::Key_2: return kBit2;
+    case Qt::Key_3: return kBit3;
+    case Qt::Key_4: return kBit4;
+    default: return 0;
+    }
+}
+
+bool HidInputRouter::handleDigitChord(int key, bool pressed, bool autoRepeat)
+{
+    const int bit = digitBit(key);
+    if (bit == 0)
         return false;
     if (autoRepeat)
         return true;
 
-    if (key == Qt::Key_3)
-        m_key3Down = pressed;
-    else
-        m_key4Down = pressed;
+    if (pressed) {
+        m_keyMask |= bit;
+        m_gestureMask |= bit;
 
-    if (!pressed) {
-        if (!m_key3Down && !m_key4Down)
-            m_chord34Fired = false;
-        return true;
-    }
+        if (m_chordFired)
+            return true;
 
-    if (m_key3Down && m_key4Down) {
-        if (emitSignals && !m_chord34Fired) {
-            m_chord34Fired = true;
-            emit goLive();
+        if ((m_keyMask & kChord1234) == kChord1234) {
+            m_chordTimer.stop();
+            flushDigitChord();
+            return true;
         }
+        if ((m_keyMask & kChord234) == kChord234) {
+            m_chordTimer.start();
+            return true;
+        }
+        m_chordTimer.stop();
         return true;
     }
 
-    if (emitSignals && !m_chord34Fired) {
-        if (key == Qt::Key_3)
-            emit moveCurrent(1);
-        else
-            emit togglePreview();
-    }
+    m_keyMask &= ~bit;
+    if (m_keyMask != 0)
+        return true;
+
+    m_chordTimer.stop();
+    if (!m_chordFired)
+        flushDigitChord();
+    m_gestureMask = 0;
+    m_chordFired = false;
     return true;
+}
+
+void HidInputRouter::flushDigitChord()
+{
+    if (m_chordFired || m_gestureMask == 0)
+        return;
+
+    const int mask = m_gestureMask;
+
+    if ((mask & kChord1234) == kChord1234) {
+        m_chordFired = true;
+        emit exportToUsb();
+        return;
+    }
+    if ((mask & kChord234) == kChord234) {
+        m_chordFired = true;
+        emit newPatientSession();
+        return;
+    }
+
+    if (m_keyMask != 0)
+        return;
+
+    m_chordFired = true;
+    if ((mask & (kBit3 | kBit4)) == (kBit3 | kBit4))
+        emit goLive();
+    else if (mask == kBit4)
+        emit togglePreview();
+    else if (mask == kBit3)
+        emit moveCurrent(1);
+    else if (mask == kBit2)
+        emit toggleRecord();
+    else if (mask == kBit1)
+        emit captureSnapshot();
+    else
+        m_chordFired = false;
 }
 
 bool HidInputRouter::handleKey(QKeyEvent *event, bool emitSignals)
@@ -183,22 +244,12 @@ bool HidInputRouter::handleKey(QKeyEvent *event, bool emitSignals)
         return true;
 
     switch (event->key()) {
-    case Qt::Key_2:
-        if (emitSignals)
-            emit toggleRecord();
-        return true;
-    case Qt::Key_1:
     case Qt::Key_S:
     case Qt::Key_F8:
     case Qt::Key_Camera:
     case Qt::Key_Print:
         if (emitSignals)
             emit captureSnapshot();
-        return true;
-    case Qt::Key_L:
-    case Qt::Key_F2:
-        if (emitSignals)
-            emit openLibrary();
         return true;
     case Qt::Key_H:
     case Qt::Key_Home:

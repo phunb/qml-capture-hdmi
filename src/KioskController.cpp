@@ -1,8 +1,9 @@
 #include "KioskController.h"
 
 #include <QGuiApplication>
-#include <QMetaObject>
-#include <QWindow>
+#ifdef Q_OS_WIN
+#  include <QMetaObject>
+#endif
 
 #ifdef Q_OS_WIN
 KioskController *KioskController::s_instance = nullptr;
@@ -11,7 +12,6 @@ KioskController *KioskController::s_instance = nullptr;
 KioskController::KioskController(QObject *parent)
     : QObject(parent)
 {
-    qApp->installNativeEventFilter(this);
 #ifdef Q_OS_WIN
     s_instance = this;
 #endif
@@ -20,8 +20,6 @@ KioskController::KioskController(QObject *parent)
 KioskController::~KioskController()
 {
     removeOsHooks();
-    if (qApp)
-        qApp->removeNativeEventFilter(this);
 #ifdef Q_OS_WIN
     if (s_instance == this)
         s_instance = nullptr;
@@ -36,7 +34,6 @@ void KioskController::attachWindow(QObject *windowObject)
     m_window = window;
     applyWindowState();
     installOsHooks();
-    emit attachedChanged();
 }
 
 void KioskController::setLocked(bool locked)
@@ -102,14 +99,6 @@ void KioskController::removeOsHooks()
 #endif
     if (m_window)
         m_window->setKeyboardGrabEnabled(false);
-}
-
-bool KioskController::nativeEventFilter(const QByteArray &eventType, void *message, qintptr *result)
-{
-    Q_UNUSED(eventType)
-    Q_UNUSED(message)
-    Q_UNUSED(result)
-    return false;
 }
 
 #ifdef Q_OS_WIN

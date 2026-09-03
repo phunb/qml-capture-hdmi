@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Window
 import HdmiKiosk
 
@@ -13,7 +12,7 @@ Window {
     visibility: Kiosk.locked ? Window.FullScreen : Window.Windowed
     flags: Kiosk.locked ? (Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint) : Qt.Window
 
-    property bool dialogOpen: deleteDialog.opened || exitDialog.opened
+    property bool dialogOpen: deleteDialog.opened || exitDialog.opened || Recordings.copying
     property int pendingDeleteIndex: -1
 
     function requestDeleteCurrent() {
@@ -32,8 +31,6 @@ Window {
 
     Component.onCompleted: {
         Kiosk.attachWindow(root)
-        Capture.startPreview()
-        Library.goToRoot()
     }
 
     LiveView {
@@ -64,6 +61,23 @@ Window {
         onConfirmed: Kiosk.exitApp()
     }
 
+    CopyProgressOverlay {
+        anchors.fill: parent
+    }
+
+    KioskToast {
+        anchors.fill: parent
+        message: {
+            if (Recordings.copying || Recordings.copyMessage.length > 0)
+                return ""
+            if (Recordings.flashMessage.length > 0)
+                return Recordings.flashMessage
+            if (Capture.flashMessage.length > 0 && Capture.flashMessage !== qsTr("Đã chụp"))
+                return Capture.flashMessage
+            return ""
+        }
+    }
+
     Connections {
         target: HidInput
 
@@ -78,7 +92,16 @@ Window {
         }
 
         function onCaptureSnapshot() {
-            if (dialogOpen)
+            if (exitDialog.opened) {
+                exitDialog.close()
+                return
+            }
+            if (deleteDialog.opened) {
+                pendingDeleteIndex = -1
+                deleteDialog.close()
+                return
+            }
+            if (Recordings.copying)
                 return
             if (liveView.previewing) {
                 liveView.moveSelection(-1)
@@ -88,7 +111,16 @@ Window {
         }
 
         function onPedalTap() {
-            if (dialogOpen)
+            if (exitDialog.opened) {
+                exitDialog.close()
+                return
+            }
+            if (deleteDialog.opened) {
+                pendingDeleteIndex = -1
+                deleteDialog.close()
+                return
+            }
+            if (Recordings.copying)
                 return
             if (liveView.previewing) {
                 liveView.exitPreview()
@@ -189,6 +221,19 @@ Window {
         function onAdminExit() {
             exitDialog.confirmSelected = false
             exitDialog.open()
+        }
+
+        function onNewPatientSession() {
+            if (Recordings.copying)
+                return
+            liveView.exitPreview()
+            Recordings.startNewSession()
+        }
+
+        function onExportToUsb() {
+            if (deleteDialog.opened || exitDialog.opened)
+                return
+            Recordings.exportToUsb()
         }
     }
 

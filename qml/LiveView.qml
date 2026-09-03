@@ -20,9 +20,29 @@ Item {
     }
     readonly property url latestUrl: latestIndex >= 0 ? Library.urlAt(latestIndex) : ""
     readonly property bool latestIsImage: latestIndex >= 0 ? Library.isImageAt(latestIndex) : true
-
-    function activateSelected() {
-        openCurrent()
+    readonly property var hintItems: {
+        if (root.previewing)
+            return [
+                { key: "1", label: qsTr("Clip trước") },
+                { key: "2", label: qsTr("Clip sau") },
+                { key: "3", label: qsTr("Tua −10s") },
+                { key: "4", label: qsTr("Tua +10s") },
+                { key: "Pedal", label: qsTr("Về Live") }
+            ]
+        if (Capture.recording)
+            return [
+                { key: "1", label: qsTr("Ảnh") },
+                { key: "2", label: qsTr("Dừng ghi") },
+                { key: "Pedal", label: qsTr("Ảnh") }
+            ]
+        return [
+            { key: "1", label: qsTr("Ảnh") },
+            { key: "2", label: qsTr("Ghi hình") },
+            { key: "4", label: qsTr("Xem lại") },
+            { key: "Pedal", label: qsTr("Ảnh") },
+            { key: "234", label: qsTr("Bệnh nhân mới") },
+            { key: "1234", label: qsTr("Chép USB") }
+        ]
     }
 
     function moveSelection(delta) {
@@ -131,10 +151,11 @@ Item {
         id: mainPane
         anchors.left: parent.left
         anchors.top: parent.top
-        anchors.bottom: parent.bottom
+        anchors.bottom: hintBar.top
         anchors.right: sideColumn.left
         anchors.margins: 16
         anchors.rightMargin: 12
+        anchors.bottomMargin: 8
 
         Rectangle {
             anchors.fill: parent
@@ -209,34 +230,61 @@ Item {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
             anchors.topMargin: 16
-            radius: 8
+            radius: 10
             color: Theme.overlay
-            width: modeRow.implicitWidth + 28
-            height: 44
+            width: modeRow.implicitWidth + 32
+            height: 52
             z: 20
 
             Row {
                 id: modeRow
                 anchors.centerIn: parent
-                spacing: 10
+                spacing: 12
 
                 Rectangle {
                     visible: !root.previewing && Capture.videoPresent
-                    width: 16
-                    height: 16
-                    radius: 8
+                    width: 18
+                    height: 18
+                    radius: 9
                     color: Theme.live
                     anchors.verticalCenter: parent.verticalCenter
                     border.width: 2
-                    border.color: "#ffc4c8"
+                    border.color: "#b8f5d4"
                 }
 
                 Text {
-                    text: root.previewing ? qsTr("Preview") : qsTr("Live")
+                    text: root.previewing ? qsTr("XEM LẠI") : qsTr("LIVE")
                     color: Theme.text
                     font.pixelSize: Theme.fontBody
                     font.bold: true
                     anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Text {
+                    visible: Recordings.sessionName.length > 0
+                    text: Recordings.sessionName
+                    color: Theme.text
+                    font.pixelSize: Theme.fontBody
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Rectangle {
+                    width: usbLabel.implicitWidth + 16
+                    height: 28
+                    radius: 8
+                    color: Recordings.usbAvailable ? "#243d2e" : Theme.surfaceAlt
+                    border.width: 1
+                    border.color: Recordings.usbAvailable ? "#3dd68c" : Theme.muted
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Text {
+                        id: usbLabel
+                        anchors.centerIn: parent
+                        text: Recordings.usbAvailable ? qsTr("USB") : qsTr("Không USB")
+                        color: Recordings.usbAvailable ? "#3dd68c" : Theme.muted
+                        font.pixelSize: Theme.fontSmall
+                        font.bold: true
+                    }
                 }
             }
         }
@@ -245,22 +293,40 @@ Item {
             anchors.left: parent.left
             anchors.top: parent.top
             anchors.margins: 16
-            radius: 8
+            radius: 10
             color: Theme.overlay
-            width: statusLabel.implicitWidth + 24
-            height: 40
-            visible: Capture.recording || Capture.flashMessage.length > 0
+            width: recRow.implicitWidth + 28
+            height: 52
+            visible: Capture.recording
             z: 5
 
-            Text {
-                id: statusLabel
+            Row {
+                id: recRow
                 anchors.centerIn: parent
-                text: Capture.flashMessage.length > 0
-                      ? Capture.flashMessage
-                      : qsTr("REC  %1").arg(Capture.recordingDurationText)
-                color: Capture.recording && Capture.flashMessage.length === 0 ? Theme.accent : Theme.text
-                font.pixelSize: Theme.fontBody
-                font.bold: true
+                spacing: 10
+
+                Rectangle {
+                    width: 18
+                    height: 18
+                    radius: 9
+                    color: Theme.accent
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    SequentialAnimation on opacity {
+                        running: Capture.recording
+                        loops: Animation.Infinite
+                        NumberAnimation { to: 0.25; duration: 500 }
+                        NumberAnimation { to: 1; duration: 500 }
+                    }
+                }
+
+                Text {
+                    text: qsTr("REC  %1").arg(Capture.recordingDurationText)
+                    color: Theme.accent
+                    font.pixelSize: Theme.fontBody
+                    font.bold: true
+                    anchors.verticalCenter: parent.verticalCenter
+                }
             }
         }
     }
@@ -269,9 +335,10 @@ Item {
         id: sideColumn
         anchors.top: parent.top
         anchors.right: parent.right
-        anchors.bottom: parent.bottom
+        anchors.bottom: hintBar.top
         anchors.margins: 16
         anchors.leftMargin: 0
+        anchors.bottomMargin: 8
         width: root.rightWidth
         spacing: 12
 
@@ -447,6 +514,76 @@ Item {
                             root.playCurrentIfVideo()
                         }
                         onDoubleClicked: root.openCurrent()
+                    }
+                }
+            }
+        }
+    }
+
+    Rectangle {
+        id: hintBar
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: Math.max(72, hintFlow.implicitHeight + 20)
+        color: "#f207090c"
+        z: 30
+
+        Rectangle {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            height: 1
+            color: Theme.surfaceAlt
+        }
+
+        Flow {
+            id: hintFlow
+            anchors.centerIn: parent
+            width: parent.width - 24
+            spacing: 10
+
+            Repeater {
+                model: root.hintItems
+
+                Rectangle {
+                    required property var modelData
+                    height: 44
+                    width: chipRow.implicitWidth + 18
+                    radius: 10
+                    color: Theme.surfaceAlt
+                    border.width: 1
+                    border.color: "#2c3646"
+
+                    Row {
+                        id: chipRow
+                        anchors.centerIn: parent
+                        spacing: 8
+
+                        Rectangle {
+                            width: keyText.implicitWidth + 12
+                            height: 26
+                            radius: 6
+                            color: "#2f6df6"
+                            anchors.verticalCenter: parent.verticalCenter
+
+                            Text {
+                                id: keyText
+                                anchors.centerIn: parent
+                                text: modelData.key
+                                color: Theme.text
+                                font.pixelSize: 15
+                                font.bold: true
+                            }
+                        }
+
+                        Text {
+                            text: modelData.label
+                            color: Theme.text
+                            font.pixelSize: 16
+                            font.bold: true
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
                     }
                 }
             }

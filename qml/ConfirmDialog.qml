@@ -80,5 +80,14 @@ Popup {
                 }
             }
         }
+
+        Text {
+            text: qsTr("Pedal: Hủy")
+            color: Theme.muted
+            font.pixelSize: Theme.fontSmall
+            wrapMode: Text.WordWrap
+            Layout.fillWidth: true
+            horizontalAlignment: Text.AlignHCenter
+        }
     }
 }

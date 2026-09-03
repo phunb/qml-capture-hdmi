@@ -8,7 +8,6 @@
 #include <QMediaDevices>
 #include <QMediaRecorder>
 #include <QObject>
-#include <QPointer>
 #include <QString>
 #include <QStringList>
 #include <QTimer>
@@ -59,12 +58,10 @@ public:
 
     Q_INVOKABLE void setPreviewOutput(QObject *output);
     Q_INVOKABLE void startPreview();
-    Q_INVOKABLE void stopPreview();
-    Q_INVOKABLE bool startRecording();
-    Q_INVOKABLE void stopRecording();
+    bool startRecording();
+    void stopRecording();
     Q_INVOKABLE void toggleRecording();
     Q_INVOKABLE bool captureSnapshot();
-    Q_INVOKABLE void refreshDevices();
 
 signals:
     void devicesChanged();
@@ -81,6 +78,7 @@ signals:
     void flashMessageChanged();
 
 private:
+    void refreshDevices();
     void applyDevice(int index);
     void choosePreferredDevice();
     void configureCameraFormat();
@@ -121,5 +119,4 @@ private:
     QTimer m_watchdog;
     QTimer m_tick;
     QTimer m_flashTimer;
-    QPointer<QObject> m_previewOutput;
 };

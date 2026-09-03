@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QTimer>
 
 #ifdef Q_OS_WIN
 #  include <windows.h>
@@ -23,7 +24,6 @@ public:
 signals:
     void toggleRecord();
     void captureSnapshot();
-    void openLibrary();
     void goLive();
     void goBack();
     void playPause();
@@ -34,21 +34,26 @@ signals:
     void adminExit();
     void pedalTap();
     void togglePreview();
+    void newPatientSession();
+    void exportToUsb();
 
 private:
     bool handleKey(class QKeyEvent *event, bool emitSignals = true);
     bool handlePedalKey(int key, bool pressed, bool autoRepeat);
-    bool handleDigitChord(int key, bool pressed, bool autoRepeat, bool emitSignals);
+    bool handleDigitChord(int key, bool pressed, bool autoRepeat);
     void handlePedalPress();
     void handlePedalRelease();
+    void flushDigitChord();
+    static int digitBit(int key);
 
 #ifdef Q_OS_WIN
     static HidInputRouter *s_instance;
     HHOOK m_keyboardHook = nullptr;
 #endif
 
+    QTimer m_chordTimer;
     bool m_pedalDown = false;
-    bool m_key3Down = false;
-    bool m_key4Down = false;
-    bool m_chord34Fired = false;
+    int m_keyMask = 0;
+    int m_gestureMask = 0;
+    bool m_chordFired = false;
 };

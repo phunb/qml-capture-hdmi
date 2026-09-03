@@ -1,10 +1,8 @@
 #include "AppSettings.h"
 
 #include <QDir>
-#include <QFileInfo>
 #include <QSettings>
 #include <QStorageInfo>
-#include <QUrl>
 #include <QtGlobal>
 
 #ifdef Q_OS_WIN
@@ -41,27 +39,21 @@ bool isSystemRoot(const QString &rootPath)
 #endif
 }
 
-QString recorderOutputOn(const QString &rootPath)
+QString outputOn(const QString &rootPath)
 {
-    return QDir(rootPath).filePath(QStringLiteral("recorder/output"));
+    return QDir(rootPath).filePath(QStringLiteral("output"));
 }
 
-QString localFallbackDir()
+QString defaultLocalOutputDir()
 {
 #ifdef Q_OS_WIN
-    return QStringLiteral("C:/recorder/output");
+    return QStringLiteral("C:/output");
 #else
-    return QDir::home().filePath(QStringLiteral("recorder/output"));
+    const QString systemOutput = QStringLiteral("/output");
+    if (QDir().mkpath(systemOutput))
+        return systemOutput;
+    return QDir::home().filePath(QStringLiteral("output"));
 #endif
-}
-
-QString volumeLabel(const QStorageInfo &vol)
-{
-    const QString name = vol.name().trimmed();
-    const QString root = QDir::toNativeSeparators(vol.rootPath());
-    if (!name.isEmpty())
-        return QStringLiteral("USB %1 (%2)").arg(root, name);
-    return QStringLiteral("USB %1").arg(root);
 }
 
 } // namespace
@@ -77,30 +69,11 @@ AppSettings::AppSettings(QObject *parent)
                         || envKiosk.compare(QLatin1String("off"), Qt::CaseInsensitive) == 0);
     }
 
-    refreshOutputDir();
+    refreshPaths();
 
-    m_outputPoll.setInterval(2000);
-    connect(&m_outputPoll, &QTimer::timeout, this, &AppSettings::refreshOutputDir);
-    m_outputPoll.start();
-}
-
-void AppSettings::setKioskMode(bool enabled)
-{
-    if (m_kioskMode == enabled)
-        return;
-    m_kioskMode = enabled;
-    save();
-    emit kioskModeChanged();
-}
-
-void AppSettings::setRecordingsDir(const QString &dir)
-{
-    if (dir.isEmpty() || m_recordingsDir == dir)
-        return;
-    m_recordingsDir = dir;
-    QDir().mkpath(m_recordingsDir);
-    save();
-    emit recordingsDirChanged();
+    m_pathPoll.setInterval(2000);
+    connect(&m_pathPoll, &QTimer::timeout, this, &AppSettings::refreshPaths);
+    m_pathPoll.start();
 }
 
 void AppSettings::setPreferredDeviceId(const QString &id)
@@ -109,91 +82,49 @@ void AppSettings::setPreferredDeviceId(const QString &id)
         return;
     m_preferredDeviceId = id;
     save();
-    emit preferredDeviceIdChanged();
 }
 
-void AppSettings::setMaxRecordingMinutes(int minutes)
+void AppSettings::refreshPaths()
 {
-    minutes = qBound(5, minutes, 24 * 60);
-    if (m_maxRecordingMinutes == minutes)
-        return;
-    m_maxRecordingMinutes = minutes;
-    save();
-    emit maxRecordingMinutesChanged();
-}
-
-QUrl AppSettings::recordingsDirUrl() const
-{
-    return QUrl::fromLocalFile(m_recordingsDir);
-}
-
-void AppSettings::setDirectoryLocked(bool locked)
-{
-    m_directoryLocked = locked;
-    if (!locked)
-        refreshOutputDir();
-}
-
-void AppSettings::refreshOutputDir()
-{
-    if (m_directoryLocked)
-        return;
-
-    bool usb = false;
-    QString label;
-    QString dir = resolveOutputDir(&usb, &label);
-    if (!QDir().mkpath(dir)) {
-        dir = QDir::home().filePath(QStringLiteral("recorder/output"));
-        usb = false;
-        label = QDir::toNativeSeparators(dir);
-        QDir().mkpath(dir);
+    QString local = resolveLocalOutputDir();
+    if (!QDir().mkpath(local)) {
+        local = QDir::home().filePath(QStringLiteral("output"));
+        QDir().mkpath(local);
     }
-    const bool changed = (m_recordingsDir != dir || m_usingUsb != usb || m_storageLabel != label);
-    m_usingUsb = usb;
-    m_storageLabel = label;
-    if (m_recordingsDir != dir) {
-        m_recordingsDir = dir;
-        QDir().mkpath(m_recordingsDir);
+
+    if (m_recordingsDir != local) {
+        m_recordingsDir = local;
         save();
         emit recordingsDirChanged();
-    } else if (changed) {
-        emit recordingsDirChanged();
-    } else {
-        QDir().mkpath(m_recordingsDir);
+    }
+
+    const QString usb = resolveUsbOutputDir();
+    if (m_usbOutputDir != usb) {
+        m_usbOutputDir = usb;
+        emit usbChanged();
     }
 }
 
-QString AppSettings::resolveOutputDir(bool *usingUsb, QString *label) const
+QString AppSettings::resolveLocalOutputDir() const
 {
     const QString fromEnv = qEnvironmentVariable("HDMI_KIOSK_OUTPUT_DIR");
-    if (!fromEnv.isEmpty()) {
-        if (usingUsb)
-            *usingUsb = false;
-        if (label)
-            *label = QDir::toNativeSeparators(fromEnv);
+    if (!fromEnv.isEmpty())
         return fromEnv;
-    }
+    return defaultLocalOutputDir();
+}
 
+QString AppSettings::resolveUsbOutputDir() const
+{
     for (const QStorageInfo &vol : QStorageInfo::mountedVolumes()) {
         if (!vol.isValid() || !vol.isReady() || vol.isReadOnly() || !isRemovableVolume(vol))
             continue;
         if (isSystemRoot(vol.rootPath()))
             continue;
-
-        const QString dir = recorderOutputOn(vol.rootPath());
-        if (usingUsb)
-            *usingUsb = true;
-        if (label)
-            *label = volumeLabel(vol);
-        return dir;
+        const QString dir = outputOn(vol.rootPath());
+        if (QDir().mkpath(dir))
+            return dir;
     }
-
-    const QString fallback = localFallbackDir();
-    if (usingUsb)
-        *usingUsb = false;
-    if (label)
-        *label = QDir::toNativeSeparators(fallback);
-    return fallback;
+    return {};
 }
 
 void AppSettings::load()

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QAbstractListModel>
-#include <QDateTime>
 #include <QUrl>
 #include <QVector>
 
@@ -17,23 +16,13 @@ class VideoLibraryModel : public QAbstractListModel
     Q_PROPERTY(QString currentName READ currentName NOTIFY currentIndexChanged)
     Q_PROPERTY(bool currentIsFolder READ currentIsFolder NOTIFY currentIndexChanged)
     Q_PROPERTY(bool currentIsImage READ currentIsImage NOTIFY currentIndexChanged)
-    Q_PROPERTY(QString rootPath READ rootPath NOTIFY pathChanged)
-    Q_PROPERTY(QString currentPath READ currentPath NOTIFY pathChanged)
-    Q_PROPERTY(QString displayPath READ displayPath NOTIFY pathChanged)
     Q_PROPERTY(bool atRoot READ atRoot NOTIFY pathChanged)
 
 public:
     enum Roles {
-        FilePathRole = Qt::UserRole + 1,
-        FileNameRole,
-        CreatedRole,
-        CreatedTextRole,
-        SizeRole,
-        SizeTextRole,
-        UrlRole,
+        UrlRole = Qt::UserRole + 1,
         IsFolderRole,
-        IsImageRole,
-        DetailTextRole
+        IsImageRole
     };
     Q_ENUM(Roles)
 
@@ -49,13 +38,11 @@ public:
     QString currentName() const;
     bool currentIsFolder() const;
     bool currentIsImage() const;
-    QString rootPath() const;
-    QString currentPath() const { return m_currentPath; }
-    QString displayPath() const;
     bool atRoot() const;
 
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void goToRoot();
+    Q_INVOKABLE void goToSession();
     Q_INVOKABLE bool goUp();
     Q_INVOKABLE bool openAt(int index);
     Q_INVOKABLE bool openCurrent();
@@ -63,7 +50,6 @@ public:
     Q_INVOKABLE bool isImageAt(int index) const;
     Q_INVOKABLE bool removeAt(int index);
     Q_INVOKABLE QUrl urlAt(int index) const;
-    Q_INVOKABLE void moveCurrent(int delta);
 
 signals:
     void countChanged();
@@ -74,8 +60,6 @@ private:
     struct Item {
         QString filePath;
         QString fileName;
-        QDateTime created;
-        qint64 size = 0;
         bool isFolder = false;
         bool isImage = false;
     };

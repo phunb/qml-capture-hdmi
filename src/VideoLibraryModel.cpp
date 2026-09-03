@@ -5,7 +5,6 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QFileSystemWatcher>
-#include <QLocale>
 #include <QUrl>
 
 VideoLibraryModel::VideoLibraryModel(RecordingManager *recordings, QObject *parent)
@@ -13,9 +12,10 @@ VideoLibraryModel::VideoLibraryModel(RecordingManager *recordings, QObject *pare
     , m_recordings(recordings)
     , m_watcher(new QFileSystemWatcher(this))
 {
-    m_currentPath = normalized(m_recordings->directory());
-    connect(m_recordings, &RecordingManager::directoryChanged, this, &VideoLibraryModel::goToRoot);
+    m_currentPath = normalized(m_recordings->rootDirectory());
+    connect(m_recordings, &RecordingManager::rootChanged, this, &VideoLibraryModel::goToRoot);
     connect(m_recordings, &RecordingManager::recordingsChanged, this, &VideoLibraryModel::refresh);
+    connect(m_recordings, &RecordingManager::sessionChanged, this, &VideoLibraryModel::goToSession);
     connect(m_watcher, &QFileSystemWatcher::directoryChanged, this, &VideoLibraryModel::refresh);
     watchCurrentPath();
     reload();
@@ -35,31 +35,12 @@ QVariant VideoLibraryModel::data(const QModelIndex &index, int role) const
 
     const Item &item = m_items.at(index.row());
     switch (role) {
-    case FilePathRole:
-        return item.filePath;
-    case FileNameRole:
-        return item.fileName;
-    case CreatedRole:
-        return item.created;
-    case CreatedTextRole:
-        return item.created.toString(QStringLiteral("dd/MM/yyyy  HH:mm"));
-    case SizeRole:
-        return item.size;
-    case SizeTextRole:
-        return item.isFolder ? QString() : QLocale().formattedDataSize(item.size);
     case UrlRole:
         return item.isFolder ? QUrl() : QUrl::fromLocalFile(item.filePath);
     case IsFolderRole:
         return item.isFolder;
     case IsImageRole:
         return item.isImage;
-    case DetailTextRole:
-        if (item.isFolder)
-            return QStringLiteral("Thư mục  •  %1")
-                .arg(item.created.toString(QStringLiteral("dd/MM/yyyy  HH:mm")));
-        return QStringLiteral("%1   •   %2")
-            .arg(item.created.toString(QStringLiteral("dd/MM/yyyy  HH:mm")),
-                 QLocale().formattedDataSize(item.size));
     default:
         return {};
     }
@@ -68,16 +49,9 @@ QVariant VideoLibraryModel::data(const QModelIndex &index, int role) const
 QHash<int, QByteArray> VideoLibraryModel::roleNames() const
 {
     return {
-        {FilePathRole, "filePath"},
-        {FileNameRole, "fileName"},
-        {CreatedRole, "created"},
-        {CreatedTextRole, "createdText"},
-        {SizeRole, "size"},
-        {SizeTextRole, "sizeText"},
         {UrlRole, "url"},
         {IsFolderRole, "isFolder"},
         {IsImageRole, "isImage"},
-        {DetailTextRole, "detailText"},
     };
 }
 
@@ -120,26 +94,9 @@ bool VideoLibraryModel::currentIsImage() const
     return isImageAt(m_currentIndex);
 }
 
-QString VideoLibraryModel::rootPath() const
-{
-    return QDir::toNativeSeparators(normalized(m_recordings->directory()));
-}
-
-QString VideoLibraryModel::displayPath() const
-{
-    const QString root = normalized(m_recordings->directory());
-    const QString current = normalized(m_currentPath);
-    if (current == root)
-        return QDir::toNativeSeparators(root);
-
-    QString relative = QDir(root).relativeFilePath(current);
-    relative.replace(QLatin1Char('/'), QDir::separator());
-    return QDir::toNativeSeparators(root) + QDir::separator() + relative;
-}
-
 bool VideoLibraryModel::atRoot() const
 {
-    return normalized(m_currentPath) == normalized(m_recordings->directory());
+    return normalized(m_currentPath) == normalized(m_recordings->rootDirectory());
 }
 
 void VideoLibraryModel::refresh()
@@ -149,7 +106,21 @@ void VideoLibraryModel::refresh()
 
 void VideoLibraryModel::goToRoot()
 {
-    m_currentPath = normalized(m_recordings->directory());
+    m_currentPath = normalized(m_recordings->rootDirectory());
+    watchCurrentPath();
+    reload();
+    emit pathChanged();
+}
+
+void VideoLibraryModel::goToSession()
+{
+    const QString session = normalized(m_recordings->directory());
+    const QString root = normalized(m_recordings->rootDirectory());
+    if (session.isEmpty() || session == root) {
+        refresh();
+        return;
+    }
+    m_currentPath = session;
     watchCurrentPath();
     reload();
     emit pathChanged();
@@ -216,19 +187,12 @@ QUrl VideoLibraryModel::urlAt(int index) const
     return QUrl::fromLocalFile(m_items.at(index).filePath);
 }
 
-void VideoLibraryModel::moveCurrent(int delta)
-{
-    if (m_items.isEmpty())
-        return;
-    setCurrentIndex(m_currentIndex + delta);
-}
-
 void VideoLibraryModel::reload()
 {
     const QString currentPath = isValidIndex(m_currentIndex) ? m_items.at(m_currentIndex).filePath : QString();
     QDir dir(m_currentPath);
     if (!dir.exists()) {
-        m_currentPath = normalized(m_recordings->directory());
+        m_currentPath = normalized(m_recordings->rootDirectory());
         dir.setPath(m_currentPath);
         QDir().mkpath(m_currentPath);
         watchCurrentPath();
@@ -242,8 +206,6 @@ void VideoLibraryModel::reload()
         Item item;
         item.filePath = info.absoluteFilePath();
         item.fileName = info.fileName();
-        item.created = info.lastModified();
-        item.size = 0;
         item.isFolder = true;
         item.isImage = false;
         m_items.append(item);
@@ -258,8 +220,6 @@ void VideoLibraryModel::reload()
         Item item;
         item.filePath = info.absoluteFilePath();
         item.fileName = info.fileName();
-        item.created = info.lastModified();
-        item.size = info.size();
         item.isFolder = false;
         const QString suffix = info.suffix().toLower();
         item.isImage = (suffix == QLatin1String("jpg")
@@ -289,7 +249,7 @@ bool VideoLibraryModel::isValidIndex(int index) const
 
 bool VideoLibraryModel::isUnderRoot(const QString &path) const
 {
-    const QString root = normalized(m_recordings->directory());
+    const QString root = normalized(m_recordings->rootDirectory());
     const QString candidate = normalized(path);
     return candidate == root || candidate.startsWith(root + QLatin1Char('/'));
 }

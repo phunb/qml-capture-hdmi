@@ -1,6 +1,5 @@
 #pragma once
 
-#include <QAbstractNativeEventFilter>
 #include <QObject>
 #include <QPointer>
 #include <QWindow>
@@ -9,29 +8,24 @@
 #  include <windows.h>
 #endif
 
-class KioskController : public QObject, public QAbstractNativeEventFilter
+class KioskController : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(bool locked READ locked NOTIFY lockedChanged)
-    Q_PROPERTY(bool attached READ attached NOTIFY attachedChanged)
 
 public:
     explicit KioskController(QObject *parent = nullptr);
     ~KioskController() override;
 
     bool locked() const { return m_locked; }
-    bool attached() const { return m_window != nullptr; }
 
     Q_INVOKABLE void attachWindow(QObject *windowObject);
     Q_INVOKABLE void setLocked(bool locked);
     Q_INVOKABLE bool requestAdminExit();
     Q_INVOKABLE void exitApp();
 
-    bool nativeEventFilter(const QByteArray &eventType, void *message, qintptr *result) override;
-
 signals:
     void lockedChanged();
-    void attachedChanged();
     void adminExitRequested();
 
 private:

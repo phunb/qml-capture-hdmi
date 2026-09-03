@@ -1,101 +1,22 @@
 #include "RecordingManager.h"
 
+#include "AppSettings.h"
+
+#include <QDate>
 #include <QDateTime>
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
 #include <QFileSystemWatcher>
 #include <QLocale>
+#include <QMetaObject>
+#include <QRegularExpression>
 #include <QStorageInfo>
-
-RecordingManager::RecordingManager(const QString &directory, QObject *parent)
-    : QObject(parent)
-    , m_watcher(new QFileSystemWatcher(this))
-{
-    connect(m_watcher, &QFileSystemWatcher::directoryChanged, this, [this]() {
-        emit recordingsChanged();
-        emit storageChanged();
-    });
-    setDirectory(directory);
-}
-
-void RecordingManager::setDirectory(const QString &directory)
-{
-    if (directory.isEmpty() || m_directory == directory)
-        return;
-
-    if (!m_directory.isEmpty())
-        m_watcher->removePath(m_directory);
-
-    m_directory = directory;
-    QDir().mkpath(m_directory);
-    watchDirectory();
-    emit directoryChanged();
-    emit recordingsChanged();
-    emit storageChanged();
-}
-
-QStringList RecordingManager::listRecordings() const
-{
-    QDir dir(m_directory);
-    const QStringList files = dir.entryList(
-        {QStringLiteral("*.mp4"), QStringLiteral("*.mkv"), QStringLiteral("*.mov"),
-         QStringLiteral("*.jpg"), QStringLiteral("*.jpeg"), QStringLiteral("*.png")},
-        QDir::Files,
-        QDir::Time);
-
-    QStringList absolute;
-    absolute.reserve(files.size());
-    for (const QString &name : files)
-        absolute.append(dir.filePath(name));
-    return absolute;
-}
-
-QString RecordingManager::createNewRecordingPath()
-{
-    QDir().mkpath(m_directory);
-    const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd_HH-mm-ss"));
-    QString path = QDir(m_directory).filePath(QStringLiteral("record_%1.mp4").arg(stamp));
-    int suffix = 2;
-    while (QFileInfo::exists(path)) {
-        path = QDir(m_directory).filePath(QStringLiteral("record_%1_%2.mp4").arg(stamp).arg(suffix));
-        ++suffix;
-    }
-    return path;
-}
-
-QString RecordingManager::createNewCapturePath()
-{
-    QDir().mkpath(m_directory);
-    const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd_HH-mm-ss"));
-    QString path = QDir(m_directory).filePath(QStringLiteral("capture_%1.jpg").arg(stamp));
-    int suffix = 2;
-    while (QFileInfo::exists(path)) {
-        path = QDir(m_directory).filePath(QStringLiteral("capture_%1_%2.jpg").arg(stamp).arg(suffix));
-        ++suffix;
-    }
-    return path;
-}
-
-bool RecordingManager::removeRecording(const QString &filePath)
-{
-    const QFileInfo info(filePath);
-    const QString canonical = QDir::cleanPath(info.canonicalFilePath());
-    QString root = QDir::cleanPath(QFileInfo(m_directory).canonicalFilePath());
-    if (canonical.isEmpty() || root.isEmpty())
-        return false;
-    if (!root.endsWith(QLatin1Char('/')))
-        root += QLatin1Char('/');
-    if (canonical != QDir::cleanPath(m_directory) && !canonical.startsWith(root))
-        return false;
-
-    const bool ok = QFile::remove(canonical);
-    if (ok) {
-        emit recordingsChanged();
-        emit storageChanged();
-    }
-    return ok;
-}
+#include <QThread>
+#include <QTimer>
+#include <QtGlobal>
+#include <QVector>
 
 namespace {
 
@@ -110,11 +31,148 @@ QStorageInfo storageFor(const QString &directory)
     return info;
 }
 
+QString uniquePath(const QString &directory, const QString &baseName)
+{
+    QString path = QDir(directory).filePath(baseName);
+    if (!QFileInfo::exists(path))
+        return path;
+    const QFileInfo info(baseName);
+    const QString stem = info.completeBaseName();
+    const QString suffix = info.suffix();
+    int n = 2;
+    while (QFileInfo::exists(path)) {
+        path = QDir(directory).filePath(QStringLiteral("%1_%2.%3").arg(stem).arg(n).arg(suffix));
+        ++n;
+    }
+    return path;
+}
+
+bool parseDateFolder(const QString &name, QDate *date)
+{
+    static const QRegularExpression re(QStringLiteral("^(\\d{2})-(\\d{2})-(\\d{4})$"));
+    const QRegularExpressionMatch match = re.match(name);
+    if (!match.hasMatch())
+        return false;
+    const QDate parsed(match.captured(3).toInt(), match.captured(2).toInt(), match.captured(1).toInt());
+    if (!parsed.isValid())
+        return false;
+    if (date)
+        *date = parsed;
+    return true;
+}
+
 } // namespace
+
+RecordingManager::RecordingManager(AppSettings *settings, QObject *parent)
+    : QObject(parent)
+    , m_settings(settings)
+    , m_watcher(new QFileSystemWatcher(this))
+{
+    connect(m_watcher, &QFileSystemWatcher::directoryChanged, this, [this]() {
+        emit recordingsChanged();
+    });
+    connect(m_settings, &AppSettings::recordingsDirChanged, this, [this]() {
+        setRootDirectory(m_settings->recordingsDir());
+    });
+    connect(m_settings, &AppSettings::usbChanged, this, [this]() {
+        emit usbChanged();
+        if (!m_usbAnnounce || m_copying)
+            return;
+        showFlash(usbAvailable() ? tr("Đã cắm USB") : tr("USB đã rút"));
+    });
+
+    setRootDirectory(m_settings->recordingsDir());
+    purgeOldFolders();
+    QTimer::singleShot(2000, this, [this]() { m_usbAnnounce = true; });
+}
+
+RecordingManager::~RecordingManager()
+{
+    if (m_copyThread) {
+        m_copyThread->disconnect();
+        m_copyThread->wait(120000);
+        delete m_copyThread;
+        m_copyThread = nullptr;
+    }
+}
+
+QString RecordingManager::directory() const
+{
+    return m_sessionDirectory.isEmpty() ? m_rootDirectory : m_sessionDirectory;
+}
+
+bool RecordingManager::usbAvailable() const
+{
+    return m_settings && m_settings->usbAvailable();
+}
+
+void RecordingManager::setRootDirectory(const QString &directory)
+{
+    if (directory.isEmpty())
+        return;
+
+    const QString next = QDir::cleanPath(directory);
+    if (m_rootDirectory == next) {
+        QDir().mkpath(m_rootDirectory);
+        return;
+    }
+
+    if (!m_rootDirectory.isEmpty())
+        m_watcher->removePath(m_rootDirectory);
+
+    m_rootDirectory = next;
+    QDir().mkpath(m_rootDirectory);
+    purgeOldFolders();
+    m_sessionDirectory.clear();
+    m_sessionName.clear();
+    watchDirectory();
+    emit rootChanged();
+    emit sessionChanged();
+    emit recordingsChanged();
+}
+
+void RecordingManager::setWriting(bool writing)
+{
+    m_writing = writing;
+}
+
+QString RecordingManager::createNewRecordingPath()
+{
+    const QString dir = ensureSession();
+    QDir().mkpath(dir);
+    const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd_HH-mm-ss"));
+    return uniquePath(dir, QStringLiteral("record_%1.mp4").arg(stamp));
+}
+
+QString RecordingManager::createNewCapturePath()
+{
+    const QString dir = ensureSession();
+    QDir().mkpath(dir);
+    const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd_HH-mm-ss"));
+    return uniquePath(dir, QStringLiteral("capture_%1.jpg").arg(stamp));
+}
+
+bool RecordingManager::removeRecording(const QString &filePath)
+{
+    const QFileInfo info(filePath);
+    const QString canonical = QDir::cleanPath(info.canonicalFilePath());
+    QString root = QDir::cleanPath(QFileInfo(m_rootDirectory).canonicalFilePath());
+    if (canonical.isEmpty() || root.isEmpty())
+        return false;
+    if (!root.endsWith(QLatin1Char('/')))
+        root += QLatin1Char('/');
+    if (canonical != QDir::cleanPath(m_rootDirectory) && !canonical.startsWith(root))
+        return false;
+
+    const bool ok = QFile::remove(canonical);
+    if (ok)
+        emit recordingsChanged();
+    return ok;
+}
 
 qint64 RecordingManager::freeBytes() const
 {
-    const QStorageInfo info = storageFor(m_directory);
+    const QStorageInfo info = storageFor(directory());
     if (!info.isValid() || !info.isReady())
         return -1;
     return info.bytesAvailable();
@@ -132,18 +190,377 @@ bool RecordingManager::hasEnoughSpace(qint64 minimumBytes) const
 {
     const qint64 free = freeBytes();
     if (free < 0)
-        return QDir().mkpath(m_directory);
+        return QDir().mkpath(directory());
     return free >= minimumBytes;
 }
 
 void RecordingManager::notifyChanged()
 {
     emit recordingsChanged();
-    emit storageChanged();
+}
+
+bool RecordingManager::startNewSession()
+{
+    if (m_writing) {
+        showFlash(tr("Đang ghi hình\nKhông tạo thư mục mới"));
+        return false;
+    }
+
+    const QString path = createSessionDirectory();
+    if (path.isEmpty()) {
+        showFlash(tr("Không tạo được thư mục bệnh nhân."));
+        return false;
+    }
+
+        showFlash(tr("Bệnh nhân mới\n%1").arg(m_sessionName));
+    return true;
+}
+
+void RecordingManager::exportToUsb()
+{
+    if (m_copying)
+        return;
+    if (m_writing) {
+        showFlash(tr("Đang ghi hình\nKhông chép USB được"));
+        return;
+    }
+    if (!usbAvailable()) {
+        showFlash(tr("Không có USB\nCắm USB rồi nhấn 1 2 3 4"));
+        return;
+    }
+
+    const QString srcRoot = m_rootDirectory;
+    const QString dstRoot = m_settings->usbOutputDir();
+    if (srcRoot.isEmpty() || dstRoot.isEmpty() || !QDir(srcRoot).exists()) {
+        showFlash(tr("Không có dữ liệu để chép"));
+        return;
+    }
+
+    m_copying = true;
+    m_copyError = false;
+    m_copyProgress = 0;
+    setCopyMessage(tr("Đang chép sang USB"));
+    emit copyingChanged();
+    emit copyErrorChanged();
+    emit copyProgressChanged();
+
+    if (m_copyThread) {
+        m_copyThread->wait(120000);
+        delete m_copyThread;
+        m_copyThread = nullptr;
+    }
+
+    m_copyThread = QThread::create([this, srcRoot, dstRoot]() {
+        QDir().mkpath(dstRoot);
+
+        QDirIterator dirIt(srcRoot, QDir::Dirs | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
+        while (dirIt.hasNext()) {
+            const QString absDir = dirIt.next();
+            const QString relative = QDir(srcRoot).relativeFilePath(absDir);
+            QDir().mkpath(QDir(dstRoot).filePath(relative));
+        }
+
+        QVector<CopyFile> pending;
+        qint64 totalBytes = 0;
+        qint64 copiedBytes = 0;
+        QDirIterator it(srcRoot, QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            it.next();
+            const QFileInfo info = it.fileInfo();
+            if (info.suffix().compare(QLatin1String("tmp"), Qt::CaseInsensitive) == 0)
+                continue;
+
+            const QString relative = QDir(srcRoot).relativeFilePath(info.absoluteFilePath());
+            const QString dest = QDir(dstRoot).filePath(relative);
+            totalBytes += info.size();
+            if (QFileInfo::exists(dest)) {
+                copiedBytes += info.size();
+                continue;
+            }
+            CopyFile file;
+            file.source = info.absoluteFilePath();
+            file.destination = dest;
+            file.size = info.size();
+            pending.append(file);
+        }
+
+        int lastPercent = -1;
+        const auto report = [this, totalBytes, &lastPercent](qint64 copied) {
+            const int percent = totalBytes > 0
+                ? qBound(0, int(copied * 100 / totalBytes), 100)
+                : 100;
+            if (percent == lastPercent)
+                return;
+            lastPercent = percent;
+            QMetaObject::invokeMethod(this, [this, percent]() {
+                setCopyProgress(percent);
+            }, Qt::QueuedConnection);
+        };
+        report(copiedBytes);
+
+        if (pending.isEmpty()) {
+            QMetaObject::invokeMethod(this, [this]() {
+                finishCopy(true, tr("USB đã có đủ file"));
+            }, Qt::QueuedConnection);
+            return;
+        }
+
+        QMetaObject::invokeMethod(this, [this]() {
+            setCopyMessage(tr("Đang chép sang USB"));
+        }, Qt::QueuedConnection);
+
+        for (const CopyFile &file : pending) {
+            QDir().mkpath(QFileInfo(file.destination).absolutePath());
+            if (!copyFileSkippingExisting(file, &copiedBytes, [&]() { report(copiedBytes); })) {
+                QMetaObject::invokeMethod(this, [this]() {
+                    finishCopy(false, tr("Lỗi khi chép USB"));
+                }, Qt::QueuedConnection);
+                return;
+            }
+            report(copiedBytes);
+        }
+
+        QMetaObject::invokeMethod(this, [this]() {
+            finishCopy(true, tr("Đã chép xong"));
+        }, Qt::QueuedConnection);
+    });
+
+    connect(m_copyThread, &QThread::finished, this, [this]() {
+        m_copyThread->deleteLater();
+        m_copyThread = nullptr;
+    });
+    m_copyThread->start();
+}
+
+QString RecordingManager::ensureSession()
+{
+    if (!m_sessionDirectory.isEmpty() && QDir(m_sessionDirectory).exists())
+        return m_sessionDirectory;
+    return createSessionDirectory();
+}
+
+QString RecordingManager::createSessionDirectory()
+{
+    if (m_rootDirectory.isEmpty())
+        return {};
+
+    if (!m_sessionDirectory.isEmpty()) {
+        QDir old(m_sessionDirectory);
+        if (old.exists() && old.entryList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot).isEmpty())
+            old.removeRecursively();
+    }
+
+    const QDateTime now = QDateTime::currentDateTime();
+    const QString dateFolder = now.toString(QStringLiteral("dd-MM-yyyy"));
+    const QString sessionFolder = now.toString(QStringLiteral("HH-mm-ss-"))
+        + QStringLiteral("%1").arg(now.time().msec(), 3, 10, QChar('0'));
+
+    QString path = QDir(m_rootDirectory).filePath(dateFolder);
+    path = QDir(path).filePath(sessionFolder);
+    int suffix = 2;
+    while (QFileInfo::exists(path)) {
+        path = QDir(QDir(m_rootDirectory).filePath(dateFolder))
+                   .filePath(QStringLiteral("%1_%2").arg(sessionFolder).arg(suffix));
+        ++suffix;
+    }
+
+    if (!QDir().mkpath(path))
+        return {};
+
+    if (!m_sessionDirectory.isEmpty())
+        m_watcher->removePath(m_sessionDirectory);
+
+    m_sessionDirectory = path;
+    m_sessionName = dateFolder + QLatin1Char('/') + QFileInfo(path).fileName();
+    watchDirectory();
+    if (usbAvailable()) {
+        const QString usbDir = usbPathForLocal(path);
+        if (!usbDir.isEmpty())
+            QDir().mkpath(usbDir);
+    }
+    emit sessionChanged();
+    emit recordingsChanged();
+    return m_sessionDirectory;
+}
+
+void RecordingManager::purgeOldFolders()
+{
+    if (m_rootDirectory.isEmpty())
+        return;
+
+    // Keep today and yesterday. Remove date folders from 2 days ago and older.
+    const QDate keepFrom = QDate::currentDate().addDays(-1);
+    QDir root(m_rootDirectory);
+    const QFileInfoList folders = root.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
+    for (const QFileInfo &info : folders) {
+        QDate folderDate;
+        bool old = false;
+        if (parseDateFolder(info.fileName(), &folderDate))
+            old = folderDate < keepFrom;
+        else
+            old = info.lastModified().date() < keepFrom;
+        if (!old)
+            continue;
+        if (QDir(info.absoluteFilePath()).removeRecursively())
+            qInfo() << "Purged output folder older than 2 days" << info.absoluteFilePath();
+    }
+}
+
+void RecordingManager::mirrorToUsb(const QString &localFilePath)
+{
+    const QString dest = usbPathForLocal(localFilePath);
+    if (dest.isEmpty() || !QFileInfo::exists(localFilePath))
+        return;
+
+    const qint64 size = QFileInfo(localFilePath).size();
+    const auto job = [localFilePath, dest]() {
+        copyFileAtomic(localFilePath, dest);
+    };
+    if (size <= 16LL * 1024 * 1024) {
+        job();
+        return;
+    }
+
+    QThread *thread = QThread::create(job);
+    QObject::connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+    thread->start();
+}
+
+QString RecordingManager::usbPathForLocal(const QString &localFilePath) const
+{
+    if (!usbAvailable() || m_rootDirectory.isEmpty() || localFilePath.isEmpty())
+        return {};
+
+    const QString relative = QDir(m_rootDirectory).relativeFilePath(localFilePath);
+    if (relative.isEmpty() || relative.startsWith(QLatin1String("..")))
+        return {};
+    return QDir(m_settings->usbOutputDir()).filePath(relative);
 }
 
 void RecordingManager::watchDirectory()
 {
-    if (!m_directory.isEmpty() && !m_watcher->directories().contains(m_directory))
-        m_watcher->addPath(m_directory);
+    const QStringList watched = m_watcher->directories();
+    if (!watched.isEmpty())
+        m_watcher->removePaths(watched);
+    if (!m_rootDirectory.isEmpty())
+        m_watcher->addPath(m_rootDirectory);
+    if (!m_sessionDirectory.isEmpty() && m_sessionDirectory != m_rootDirectory) {
+        m_watcher->addPath(m_sessionDirectory);
+        const QString dateDir = QFileInfo(m_sessionDirectory).absolutePath();
+        if (!dateDir.isEmpty() && dateDir != m_rootDirectory)
+            m_watcher->addPath(dateDir);
+    }
+}
+
+void RecordingManager::showFlash(const QString &message)
+{
+    m_flashMessage = message;
+    emit flashMessageChanged();
+    QTimer::singleShot(3500, this, [this]() {
+        if (!m_flashMessage.isEmpty()) {
+            m_flashMessage.clear();
+            emit flashMessageChanged();
+        }
+    });
+}
+
+void RecordingManager::setCopyProgress(int percent)
+{
+    percent = qBound(0, percent, 100);
+    if (m_copyProgress == percent)
+        return;
+    m_copyProgress = percent;
+    emit copyProgressChanged();
+}
+
+void RecordingManager::setCopyMessage(const QString &message)
+{
+    if (m_copyMessage == message)
+        return;
+    m_copyMessage = message;
+    emit copyMessageChanged();
+}
+
+void RecordingManager::finishCopy(bool ok, const QString &message)
+{
+    m_copying = false;
+    m_copyError = !ok;
+    m_copyProgress = ok ? 100 : m_copyProgress;
+    setCopyMessage(message);
+    emit copyingChanged();
+    emit copyErrorChanged();
+    emit copyProgressChanged();
+    QTimer::singleShot(ok ? 5000 : 6000, this, [this]() {
+        if (!m_copying) {
+            m_copyProgress = 0;
+            m_copyError = false;
+            setCopyMessage(QString());
+            emit copyErrorChanged();
+            emit copyProgressChanged();
+        }
+    });
+}
+
+bool RecordingManager::copyFileSkippingExisting(const CopyFile &file, qint64 *copiedBytes,
+                                               const std::function<void()> &onProgress)
+{
+    if (QFileInfo::exists(file.destination)) {
+        if (copiedBytes)
+            *copiedBytes += file.size;
+        if (onProgress)
+            onProgress();
+        return true;
+    }
+
+    QFile in(file.source);
+    if (!in.open(QIODevice::ReadOnly))
+        return false;
+
+    QFile out(file.destination);
+    if (!out.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        return false;
+
+    char buffer[256 * 1024];
+    while (!in.atEnd()) {
+        const qint64 n = in.read(buffer, sizeof(buffer));
+        if (n < 0 || out.write(buffer, n) != n) {
+            out.close();
+            QFile::remove(file.destination);
+            return false;
+        }
+        if (copiedBytes)
+            *copiedBytes += n;
+        if (onProgress)
+            onProgress();
+    }
+    return true;
+}
+
+bool RecordingManager::copyFileAtomic(const QString &source, const QString &destination)
+{
+    if (QFileInfo::exists(destination))
+        return true;
+
+    QDir().mkpath(QFileInfo(destination).absolutePath());
+    const QString tempPath = destination + QStringLiteral(".tmp");
+    QFile::remove(tempPath);
+
+    CopyFile file;
+    file.source = source;
+    file.destination = tempPath;
+    file.size = QFileInfo(source).size();
+    qint64 copied = 0;
+    if (!copyFileSkippingExisting(file, &copied)) {
+        QFile::remove(tempPath);
+        return false;
+    }
+    if (QFileInfo::exists(destination)) {
+        QFile::remove(tempPath);
+        return true;
+    }
+    if (!QFile::rename(tempPath, destination)) {
+        QFile::remove(tempPath);
+        return false;
+    }
+    return true;
 }
