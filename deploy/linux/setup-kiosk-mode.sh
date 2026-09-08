@@ -44,6 +44,9 @@ fi
 if [[ -x "$SHARE_DIR/hdmi-kiosk-session.sh" ]]; then
   install -m 0755 "$SHARE_DIR/hdmi-kiosk-session.sh" "$INSTALL_ROOT/bin/hdmi-kiosk-session"
 fi
+if [[ -x "$SHARE_DIR/start-kiosk.sh" ]]; then
+  install -m 0755 "$SHARE_DIR/start-kiosk.sh" "$INSTALL_ROOT/bin/start-kiosk"
+fi
 
 install -d /etc/systemd/system/getty@tty1.service.d
 cat >/etc/systemd/system/getty@tty1.service.d/autologin.conf <<EOF
@@ -55,9 +58,28 @@ EOF
 
 BASH_PROFILE="/home/${KIOSK_USER}/.bash_profile"
 cat >"$BASH_PROFILE" <<EOF
-# HDMI Kiosk autostart
+# HDMI Kiosk autostart (bỏ qua nếu vừa thoát bảo trì trong lần boot này)
+export PATH="${INSTALL_ROOT}/bin:\${PATH}"
 if [ "\$(tty)" = "/dev/tty1" ]; then
-  exec ${INSTALL_ROOT}/bin/hdmi-kiosk-session
+  FLAG="\$HOME/.hdmi-kiosk-maintenance"
+  if [ -f "\$FLAG" ]; then
+    NOW=\$(date +%s)
+    UP=\$(cut -d. -f1 /proc/uptime)
+    BOOT=\$((NOW - UP))
+    FLAG_TS=\$(stat -c %Y "\$FLAG" 2>/dev/null || echo 0)
+    if [ "\$FLAG_TS" -ge "\$BOOT" ]; then
+      echo
+      echo "=== HDMI Kiosk: chế độ bảo trì ==="
+      echo "Không tự mở app. Vào lại kiosk:  start-kiosk"
+      echo "Hoặc khởi động lại máy (reboot) để vào kiosk."
+      echo
+    else
+      rm -f "\$FLAG"
+      exec ${INSTALL_ROOT}/bin/hdmi-kiosk-session
+    fi
+  else
+    exec ${INSTALL_ROOT}/bin/hdmi-kiosk-session
+  fi
 fi
 EOF
 chown "${KIOSK_USER}:${KIOSK_USER}" "$BASH_PROFILE"
@@ -102,6 +124,6 @@ echo "==== ĐÃ BẬT KIOSK ===="
 echo "User:     $KIOSK_USER"
 echo "App:      $INSTALL_ROOT/bin/hdmi-kiosk"
 echo "Video:    $OUTPUT_DIR"
-echo "Bảo trì:  SSH (user admin). Thoát GUI: Ctrl+Alt+Shift+Q"
+echo "Bảo trì:  SSH (user admin). Thoát kiosk: Ctrl+Alt+Shift+Q"
 echo "Khởi động lại: sudo reboot"
 echo "Máy sẽ tự login và chạy app toàn màn hình."

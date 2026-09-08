@@ -54,8 +54,8 @@ Window {
 
     ConfirmDialog {
         id: exitDialog
-        titleText: qsTr("Thoát")
-        messageText: qsTr("Thoát ứng dụng?")
+        titleText: qsTr("Thoát kiosk")
+        messageText: qsTr("Thoát chế độ kiosk (bảo trì)?")
         confirmText: qsTr("Thoát")
         danger: true
         onConfirmed: Kiosk.exitApp()

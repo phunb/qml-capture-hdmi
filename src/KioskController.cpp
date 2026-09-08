@@ -3,6 +3,8 @@
 #include "RecordingManager.h"
 
 #include <QDebug>
+#include <QDir>
+#include <QFile>
 #include <QGuiApplication>
 #include <QProcess>
 #ifdef Q_OS_WIN
@@ -113,6 +115,16 @@ bool KioskController::requestAdminExit()
 void KioskController::exitApp()
 {
     setLocked(false);
+#ifndef Q_OS_WIN
+    QFile flag(QDir::home().filePath(QStringLiteral(".hdmi-kiosk-maintenance")));
+    if (flag.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text)) {
+        flag.write("maintenance\n");
+        flag.close();
+        qInfo() << "Admin exit: skip kiosk autostart until reboot";
+    } else {
+        qWarning() << "Could not write kiosk maintenance flag" << flag.fileName();
+    }
+#endif
     QGuiApplication::quit();
 }
 

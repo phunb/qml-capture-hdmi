@@ -47,5 +47,6 @@ Bảo trì
 
 - Video: /home/kiosk/output
 - SSH: user admin (nếu đã có trong bộ cài)
-- Thoát GUI: Ctrl+Alt+Shift+Q
+- Thoát kiosk: Ctrl+Alt+Shift+Q (ở TTY bảo trì, không tự mở lại app)
+- Vào lại kiosk: gõ start-kiosk  hoặc reboot
 - Tự tắt máy khi mất HDMI 15 phút
