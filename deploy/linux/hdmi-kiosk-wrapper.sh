@@ -14,6 +14,7 @@ export QT_PLUGIN_PATH="${QT_ROOT}/plugins"
 export QML_IMPORT_PATH="${QT_ROOT}/qml"
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-wayland}"
 export QT_MEDIA_BACKEND="${QT_MEDIA_BACKEND:-ffmpeg}"
+export QT_FFMPEG_ENCODING_HW_DEVICE_TYPES="${QT_FFMPEG_ENCODING_HW_DEVICE_TYPES:-,}"
 if [[ ! -x "$BIN" ]]; then
   echo "Không tìm thấy $BIN" >&2
   exit 1

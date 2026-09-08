@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QByteArray>
 #include <QCamera>
 #include <QCameraDevice>
 #include <QElapsedTimer>
@@ -118,6 +119,7 @@ private:
     QString m_flashMessage;
     QVideoFrame m_lastFrame;
     QImage m_lastImage;
+    QByteArray m_lastJpeg;
     QElapsedTimer m_lastFrameTimer;
     QTimer m_watchdog;
     QTimer m_tick;

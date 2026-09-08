@@ -51,6 +51,12 @@ int main(int argc, char *argv[])
     QGuiApplication::setHighDpiScaleFactorRoundingPolicy(
         Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
 
+#ifdef Q_OS_LINUX
+    // Empty list disables VAAPI/etc. Qt otherwise picks h264_vaapi, which fails
+    // on this mini-PC and never falls back to a software encoder.
+    qputenv("QT_FFMPEG_ENCODING_HW_DEVICE_TYPES", ",");
+#endif
+
     QGuiApplication app(argc, argv);
     app.setOrganizationName(QStringLiteral("HdmiKiosk"));
     app.setOrganizationDomain(QStringLiteral("hdmi-kiosk.local"));

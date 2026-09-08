@@ -10,6 +10,7 @@ Restart=on-failure
 RestartSec=2
 Environment=QT_QPA_PLATFORM=xcb
 Environment=QT_MEDIA_BACKEND=ffmpeg
+Environment="QT_FFMPEG_ENCODING_HW_DEVICE_TYPES=,"
 
 [Install]
 WantedBy=default.target

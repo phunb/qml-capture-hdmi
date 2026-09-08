@@ -6,6 +6,7 @@
 #include <QByteArray>
 #include <QCameraFormat>
 #include <QColor>
+#include <QDebug>
 #include <QDir>
 #include <QImage>
 #include <QMediaFormat>
@@ -52,27 +53,13 @@ QCameraFormat bestFormat(const QCameraDevice &device)
             score += 2'000'000;
         else if (size.width() == 1280 && size.height() == 720)
             score += 500'000;
-        if (fps >= 50)
-            score += 50'000;
-
-        // Linux FFmpeg often cannot toImage()/encode MJPEG UVC frames (MS2109).
-        // Prefer packed YUV/RGB so snapshot + recorder get CPU-readable pixels.
-        const auto pf = format.pixelFormat();
-        if (pf == QVideoFrameFormat::Format_Jpeg) {
-#ifdef Q_OS_LINUX
-            score -= 8'000'000;
-#else
-            score -= 100'000;
-#endif
-        } else if (pf == QVideoFrameFormat::Format_YUYV
-                   || pf == QVideoFrameFormat::Format_UYVY
-                   || pf == QVideoFrameFormat::Format_NV12
-                   || pf == QVideoFrameFormat::Format_YUV420P
-                   || pf == QVideoFrameFormat::Format_ARGB8888
-                   || pf == QVideoFrameFormat::Format_BGRA8888
-                   || pf == QVideoFrameFormat::Format_RGBA8888) {
-            score += 3'000'000;
-        }
+        // USB2 YUYV 1080p is often 5 fps (huge delay). Prefer MJPEG 1080p 30/60.
+        if (fps < 15)
+            score -= 10'000'000;
+        else if (fps >= 50)
+            score += 80'000;
+        else if (fps >= 25)
+            score += 40'000;
 
         if (score > bestScore) {
             bestScore = score;
@@ -301,7 +288,7 @@ bool CaptureController::captureSnapshot()
         showFlash(tr("Chưa có thiết bị để chụp."));
         return false;
     }
-    if (m_lastImage.isNull() && !m_lastFrame.isValid()) {
+    if (m_lastImage.isNull() && m_lastJpeg.isEmpty() && !m_lastFrame.isValid()) {
         showFlash(tr("Chưa có khung hình để chụp."));
         return false;
     }
@@ -314,7 +301,13 @@ bool CaptureController::captureSnapshot()
         return false;
     }
 
-    const QImage image = !m_lastImage.isNull() ? m_lastImage : imageFromVideoFrame(m_lastFrame);
+    QImage image;
+    if (!m_lastJpeg.isEmpty())
+        image.loadFromData(m_lastJpeg, "JPEG");
+    if (image.isNull() && !m_lastImage.isNull())
+        image = m_lastImage;
+    if (image.isNull())
+        image = imageFromVideoFrame(m_lastFrame);
     if (image.isNull()) {
         showFlash(tr("Không đọc được khung hình từ thiết bị."));
         return false;
@@ -416,7 +409,7 @@ void CaptureController::configureCameraFormat()
     if (size.isValid())
         m_recorder.setVideoResolution(size);
     const qreal fps = format.maxFrameRate();
-    if (fps > 1.0)
+    if (fps >= 24.0)
         m_recorder.setVideoFrameRate(qMin(30.0, fps));
 }
 
@@ -424,15 +417,23 @@ void CaptureController::configureRecorder()
 {
     QMediaFormat format;
     format.setFileFormat(QMediaFormat::MPEG4);
-    format.setVideoCodec(QMediaFormat::VideoCodec::H264);
     format.setAudioCodec(QMediaFormat::AudioCodec::Unspecified);
+#ifdef Q_OS_LINUX
+    // Official Qt FFmpeg is LGPL: H.264 often only exists as h264_vaapi, which
+    // fails on this hardware. mpeg4 software encoder is always available.
+    format.setVideoCodec(QMediaFormat::VideoCodec::MPEG4);
+#else
+    format.setVideoCodec(QMediaFormat::VideoCodec::H264);
     if (!format.isSupported(QMediaFormat::Encode))
         format.setVideoCodec(QMediaFormat::VideoCodec::MPEG4);
+#endif
     if (!format.isSupported(QMediaFormat::Encode))
         format.setVideoCodec(QMediaFormat::VideoCodec::Unspecified);
     m_recorder.setMediaFormat(format);
     m_recorder.setQuality(QMediaRecorder::NormalQuality);
     m_recorder.setEncodingMode(QMediaRecorder::ConstantQualityEncoding);
+    qInfo() << "Recorder codec" << format.videoCodec()
+            << "encodeSupported" << format.isSupported(QMediaFormat::Encode);
 }
 
 void CaptureController::updateStatus()
@@ -516,13 +517,28 @@ void CaptureController::onFrame(const QVideoFrame &frame)
     m_lastFrame = frame;
     m_lastFrameTimer.restart();
     ++m_frameCounter;
-    if (m_frameCounter % 2 == 0 || m_lastImage.isNull()) {
+
+    QVideoFrame mapped = frame;
+    if (mapped.pixelFormat() == QVideoFrameFormat::Format_Jpeg) {
+        if (mapped.map(QVideoFrame::ReadOnly)) {
+            const uchar *bits = mapped.bits(0);
+            const int nbytes = mapped.mappedBytes(0);
+            if (bits && nbytes > 0)
+                m_lastJpeg = QByteArray(reinterpret_cast<const char *>(bits), nbytes);
+            mapped.unmap();
+        }
+    } else if (m_frameCounter % 8 == 0 || m_lastImage.isNull()) {
         const QImage image = imageFromVideoFrame(frame);
         if (!image.isNull())
             m_lastImage = image;
+        m_lastJpeg.clear();
     }
-    if (m_frameCounter % 8 == 0) {
-        if (imageLooksLikeNoVideo(m_lastImage)) {
+
+    if (m_frameCounter % 30 == 0) {
+        QImage probe = m_lastImage;
+        if (probe.isNull() && !m_lastJpeg.isEmpty())
+            probe.loadFromData(m_lastJpeg, "JPEG");
+        if (imageLooksLikeNoVideo(probe)) {
             if (m_blankStreak < 100)
                 ++m_blankStreak;
         } else {
