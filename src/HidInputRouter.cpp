@@ -274,6 +274,10 @@ bool HidInputRouter::handlePadEvent(int key, bool pressed, bool autoRepeat)
 {
     if (!isPadKey(key))
         return false;
+    if (key == Qt::Key_S && pressed) {
+        onMuteLetter(kBit2);
+        return true;
+    }
     if (autoRepeat || !pressed)
         return true;
     if (key == Qt::Key_N) {
@@ -304,10 +308,9 @@ void HidInputRouter::onDigitDown(int bit)
 
 void HidInputRouter::onMuteLetter(int bit)
 {
-    const bool digitWasHeld = (m_heldForChord & bit) != 0;
     m_muteRelease |= bit;
     m_heldForChord &= ~bit;
-    if (bit == kBit2 && !digitWasHeld)
+    if (bit == kBit2)
         emit goLive();
 }
 
