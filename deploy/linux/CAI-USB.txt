@@ -1,0 +1,15 @@
+HDMI Kiosk — bộ cài USB (Ubuntu 24.04 amd64)
+
+Cách lấy file
+  Sau mỗi push lên branch dev-ubuntu, CI tự build.
+  Tải tại: GitHub → Releases → ubuntu-kiosk
+  File: hdmi-kiosk-offline_1.0.0_amd64.run
+
+Cài máy không mạng
+  1. Copy file .run vào USB
+  2. Cắm USB vào mini-PC (Ubuntu Server 24.04)
+  3. sudo ./hdmi-kiosk-offline_1.0.0_amd64.run
+  4. sudo reboot
+
+Máy tự login user kiosk và chạy app toàn màn hình.
+Thoát GUI: Ctrl+Alt+Shift+Q

@@ -9,18 +9,20 @@ Khi cài Server: bật OpenSSH (nếu lúc cài còn mạng), tạo user admin c
 Cùng bản 24.04 amd64 với máy đóng gói.
 
 ------------------------------------------------
-Bước A — Đóng gói (một lần, máy Ubuntu CÓ mạng)
+Bước A — Tải bộ cài (máy có mạng / điện thoại)
 
-  git pull
-  chmod +x scripts/*.sh deploy/linux/*.sh
+Mỗi lần push lên branch dev-ubuntu, GitHub Actions tự đóng gói.
+
+  Releases:  https://github.com/phunb/qml-capture-hdmi/releases/tag/ubuntu-kiosk
+  File:      hdmi-kiosk-offline_1.0.0_amd64.run
+  (hoặc Actions → Ubuntu USB installer → artifact hdmi-kiosk-ubuntu-usb)
+
+Copy file .run vào USB.
+
+Tự đóng gói tay (không bắt buộc):
+
+  git checkout dev-ubuntu && git pull
   ./scripts/package-ubuntu-deb.sh
-
-Ra trong dist/:
-  hdmi-kiosk_1.0.0_amd64.deb              (chỉ dùng khi máy đích có mạng)
-  hdmi-kiosk-offline_1.0.0_amd64.run      ← bộ cài USB, đủ dependency
-  hdmi-kiosk-offline_1.0.0_amd64.tar.gz   (cùng nội dung, nếu thích giải nén)
-
-Không đóng gói được từ Windows.
 
 ------------------------------------------------
 Bước B — Cài trên mini-PC KHÔNG mạng

@@ -138,16 +138,14 @@ powershell -ExecutionPolicy Bypass -File deploy\windows\uninstall-autostart.ps1
 
 ### Linux (Ubuntu 24.04 kiosk)
 
-Đóng gói trên Ubuntu **có mạng** (không làm được từ Windows):
+Mỗi push lên `dev-ubuntu`, CI đóng gói bộ cài USB. Tải:
+
+https://github.com/phunb/qml-capture-hdmi/releases/tag/ubuntu-kiosk
+
+Mini-PC **không mạng** — copy `hdmi-kiosk-offline_1.0.0_amd64.run` vào USB rồi:
 
 ```bash
-./scripts/package-ubuntu-deb.sh
-```
-
-Mini-PC **không mạng** — copy USB rồi:
-
-```bash
-sudo ./dist/hdmi-kiosk-offline_1.0.0_amd64.run
+sudo ./hdmi-kiosk-offline_1.0.0_amd64.run
 sudo reboot
 ```
 
