@@ -1,0 +1,4 @@
+#!/bin/bash
+set -e
+# Giữ cấu hình kiosk khi nâng cấp gói. Gỡ hẳn: apt purge hdmi-kiosk
+exit 0

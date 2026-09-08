@@ -1,4 +1,7 @@
 build/
+build-deb/
+dist/
+.qt-venv/
 .qmlls.ini
 compile_commands.json
 out/

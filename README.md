@@ -136,20 +136,36 @@ Gỡ:
 powershell -ExecutionPolicy Bypass -File deploy\windows\uninstall-autostart.ps1
 ```
 
-### Linux
+### Linux (Ubuntu 24.04 kiosk)
+
+Đóng gói trên Ubuntu **có mạng** (không làm được từ Windows):
+
+```bash
+./scripts/package-ubuntu-deb.sh
+```
+
+Mini-PC **không mạng** — copy USB rồi:
+
+```bash
+sudo ./dist/hdmi-kiosk-offline_1.0.0_amd64.run
+sudo reboot
+```
+
+Máy tự login user `kiosk` và chạy app toàn màn hình (`cage`). Chi tiết: `deploy/linux/UBUNTU-KIOSK.txt`.
+
+Cài từ source trên chính mini-PC:
+
+```bash
+sudo ./deploy/linux/install-ubuntu-kiosk.sh
+sudo reboot
+```
+
+Chỉ autostart trên desktop sẵn có (không khóa GNOME):
 
 ```bash
 chmod +x deploy/linux/*.sh
 ./deploy/linux/install-autostart.sh /path/to/hdmi-kiosk
 ```
-
-Bật auto-login trên GDM/SDDM/LightDM. Để khóa compositor:
-
-```bash
-cage -s -- /path/to/hdmi-kiosk
-```
-
-Xem `deploy/linux/kiosk-setup.sh`.
 
 ## Bảo trì
 

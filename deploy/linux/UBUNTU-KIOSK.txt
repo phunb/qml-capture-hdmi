@@ -1,23 +1,49 @@
-# Ubuntu kiosk cho mini-PC (tránh bản quyền Windows)
-#
-# 1) Cài Ubuntu Server 24.04 LTS 64-bit lên mini-PC
-#    ISO: https://releases.ubuntu.com/24.04/ubuntu-24.04.4-live-server-amd64.iso
-#    Khi cài: bật OpenSSH, tạo user admin có sudo.
-#    Không cần cài Ubuntu Desktop.
-#
-# 2) Copy thư mục qml-project sang mini-PC (USB hoặc scp), rồi:
-#
-#    cd qml-project
-#    chmod +x deploy/linux/*.sh
-#    sudo ./deploy/linux/install-ubuntu-kiosk.sh
-#
-# 3) sudo reboot
-#    Máy tự login user kiosk và chạy app trong cage (không desktop).
-#
-# Video lưu: /home/kiosk/output
-# Bảo trì: ssh admin@IP
-# Gỡ autostart kiosk: sudo ./deploy/linux/uninstall-ubuntu-kiosk.sh
-#
-# Tự tắt máy: không có tín hiệu HDMI (hoặc nguồn HDMI tắt) liên tục 15 phút.
-# Tắt tính năng: HDMI_KIOSK_IDLE_SHUTDOWN=0
-# Đổi thời gian: HDMI_KIOSK_IDLE_MINUTES=15
+# Ubuntu kiosk — HDMI Kiosk trên mini-PC
+
+Mục tiêu: máy Ubuntu khởi động là vào app toàn màn hình (không GNOME).
+Máy đích có thể KHÔNG có mạng — dùng bộ cài offline.
+
+ISO khuyến nghị: Ubuntu Server 24.04 LTS 64-bit
+  https://releases.ubuntu.com/24.04/ubuntu-24.04.4-live-server-amd64.iso
+Khi cài Server: bật OpenSSH (nếu lúc cài còn mạng), tạo user admin có sudo.
+Cùng bản 24.04 amd64 với máy đóng gói.
+
+------------------------------------------------
+Bước A — Đóng gói (một lần, máy Ubuntu CÓ mạng)
+
+  git pull
+  chmod +x scripts/*.sh deploy/linux/*.sh
+  ./scripts/package-ubuntu-deb.sh
+
+Ra trong dist/:
+  hdmi-kiosk_1.0.0_amd64.deb              (chỉ dùng khi máy đích có mạng)
+  hdmi-kiosk-offline_1.0.0_amd64.run      ← bộ cài USB, đủ dependency
+  hdmi-kiosk-offline_1.0.0_amd64.tar.gz   (cùng nội dung, nếu thích giải nén)
+
+Không đóng gói được từ Windows.
+
+------------------------------------------------
+Bước B — Cài trên mini-PC KHÔNG mạng
+
+Copy file .run sang USB, trên mini-PC:
+
+  sudo ./hdmi-kiosk-offline_1.0.0_amd64.run
+  sudo reboot
+
+Hoặc giải nén tar.gz rồi: sudo ./install.sh && sudo reboot
+
+Không cần git, không cần compiler, không cần internet.
+Máy tự login user kiosk và chạy app.
+
+------------------------------------------------
+Gỡ
+
+  sudo apt purge hdmi-kiosk
+
+------------------------------------------------
+Bảo trì
+
+- Video: /home/kiosk/output
+- SSH: user admin (nếu đã có trong bộ cài)
+- Thoát GUI: Ctrl+Alt+Shift+Q
+- Tự tắt máy khi mất HDMI 15 phút

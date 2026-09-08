@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Cài Ubuntu kiosk cho HDMI Kiosk trên mini-PC.
-# Chạy TRÊN Ubuntu (sau khi cài Ubuntu Server 24.04 LTS):
+# Cài từ source trên Ubuntu (Server 24.04 LTS): build + bật kiosk boot.
 #   sudo ./deploy/linux/install-ubuntu-kiosk.sh
+# Máy đích chỉ cần gói .deb: xem scripts/package-ubuntu-deb.sh
 set -euo pipefail
 
 if [[ "${EUID}" -ne 0 ]]; then
@@ -16,7 +16,6 @@ INSTALL_ROOT="/opt/hdmi-kiosk"
 QT_ROOT="/opt/Qt"
 QT_VERSION="6.8.3"
 QT_PREFIX="$QT_ROOT/$QT_VERSION/gcc_64"
-OUTPUT_DIR="/home/${KIOSK_USER}/output"
 
 echo "==> Nguồn project: $SRC_DIR"
 echo "==> User kiosk: $KIOSK_USER"
@@ -24,7 +23,7 @@ echo "==> User kiosk: $KIOSK_USER"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y \
-  build-essential cmake ninja-build git curl ca-certificates \
+  build-essential cmake ninja-build git curl ca-certificates rsync \
   python3 python3-pip python3-venv \
   cage seatd dbus-user-session weston \
   mesa-utils libgl1 libegl1 libgles2 libdrm2 libgbm1 \
@@ -37,7 +36,7 @@ apt-get install -y \
   gstreamer1.0-plugins-good gstreamer1.0-plugins-base gstreamer1.0-libav \
   openssh-server udev \
   || apt-get install -y \
-  build-essential cmake ninja-build git curl ca-certificates \
+  build-essential cmake ninja-build git curl ca-certificates rsync \
   python3 python3-pip python3-venv \
   cage seatd dbus-user-session weston \
   mesa-utils libgl1 libegl1 libgles2 libdrm2 libgbm1 \
@@ -50,23 +49,8 @@ apt-get install -y \
   gstreamer1.0-plugins-good gstreamer1.0-plugins-base gstreamer1.0-libav \
   openssh-server udev
 
-# User kiosk: không sudo, có quyền camera/DRM/input
-if ! id "$KIOSK_USER" >/dev/null 2>&1; then
-  adduser --disabled-password --gecos "HDMI Kiosk" "$KIOSK_USER"
-  echo "Đặt mật khẩu user $KIOSK_USER (dùng khi SSH bảo trì):"
-  passwd "$KIOSK_USER" || true
-fi
-usermod -aG video,render,input,plugdev,audio "$KIOSK_USER"
+install -d -m 0755 "$INSTALL_ROOT"
 
-install -d -m 0755 "$INSTALL_ROOT/bin" "$QT_ROOT" "$OUTPUT_DIR"
-chown -R "${KIOSK_USER}:${KIOSK_USER}" "$OUTPUT_DIR"
-
-if [[ -f "$SCRIPT_DIR/99-hdmi-capture.rules" ]]; then
-  install -m 0644 "$SCRIPT_DIR/99-hdmi-capture.rules" /etc/udev/rules.d/99-hdmi-capture.rules
-  udevadm control --reload-rules || true
-fi
-
-# Qt 6.8 (Ubuntu 24.04 repo chỉ có ~6.4, app cần >= 6.5)
 if [[ ! -x "$QT_PREFIX/bin/qmake" ]]; then
   echo "==> Cài Qt $QT_VERSION bằng aqtinstall"
   python3 -m venv "$INSTALL_ROOT/venv"
@@ -85,70 +69,8 @@ cmake -S "$SRC_DIR" -B "$BUILD_DIR" -G Ninja \
   -DCMAKE_PREFIX_PATH="$QT_PREFIX" \
   -DCMAKE_CXX_COMPILER=g++
 cmake --build "$BUILD_DIR" --parallel
+install -d -m 0755 "$INSTALL_ROOT/bin"
 install -m 0755 "$BUILD_DIR/hdmi-kiosk" "$INSTALL_ROOT/bin/hdmi-kiosk"
-install -m 0755 "$SCRIPT_DIR/hdmi-kiosk-session.sh" "$INSTALL_ROOT/bin/hdmi-kiosk-session"
 
-# Autologin TTY1 → cage + app (không GNOME)
-install -d /etc/systemd/system/getty@tty1.service.d
-cat >/etc/systemd/system/getty@tty1.service.d/autologin.conf <<EOF
-[Service]
-ExecStart=
-ExecStart=-/sbin/agetty --autologin ${KIOSK_USER} --noclear %I \$TERM
-Type=idle
-EOF
-
-BASH_PROFILE="/home/${KIOSK_USER}/.bash_profile"
-cat >"$BASH_PROFILE" <<EOF
-# HDMI Kiosk autostart
-if [ "\$(tty)" = "/dev/tty1" ]; then
-  exec /opt/hdmi-kiosk/bin/hdmi-kiosk-session
-fi
-EOF
-chown "${KIOSK_USER}:${KIOSK_USER}" "$BASH_PROFILE"
-
-# Tắt desktop manager nếu có, không cho máy ngủ
-systemctl disable --now gdm3 gdm lightdm sddm 2>/dev/null || true
-systemctl set-default multi-user.target
-systemctl enable getty@tty1.service
-systemctl enable ssh
-systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
-
-# Không khóa màn / blank (logind)
-install -d /etc/systemd/logind.conf.d
-cat >/etc/systemd/logind.conf.d/hdmi-kiosk.conf <<EOF
-[Login]
-IdleAction=ignore
-HandleLidSwitch=ignore
-HandleLidSwitchExternalPower=ignore
-HandlePowerKey=ignore
-EOF
-
-cat >/etc/environment.d/hdmi-kiosk.conf <<EOF
-HDMI_KIOSK_OUTPUT_DIR=${OUTPUT_DIR}
-HDMI_KIOSK_QT=${QT_PREFIX}
-EOF
-
-# User kiosk được tắt máy khi app idle 15 phút không có tín hiệu HDMI
-install -d /etc/polkit-1/rules.d
-if [[ -f "$SCRIPT_DIR/50-hdmi-kiosk-poweroff.rules" ]]; then
-  sed "s/\"kiosk\"/\"${KIOSK_USER}\"/" "$SCRIPT_DIR/50-hdmi-kiosk-poweroff.rules" \
-    > /etc/polkit-1/rules.d/50-hdmi-kiosk-poweroff.rules
-  chmod 0644 /etc/polkit-1/rules.d/50-hdmi-kiosk-poweroff.rules
-fi
-if [[ -f "$SCRIPT_DIR/hdmi-kiosk-poweroff.sudoers" ]]; then
-  sed "s/^kiosk /${KIOSK_USER} /" "$SCRIPT_DIR/hdmi-kiosk-poweroff.sudoers" \
-    > /etc/sudoers.d/hdmi-kiosk-poweroff
-  chmod 0440 /etc/sudoers.d/hdmi-kiosk-poweroff
-  visudo -cf /etc/sudoers.d/hdmi-kiosk-poweroff >/dev/null
-fi
-
-echo
-echo "==== ĐÃ CÀI UBUNTU KIOSK ===="
-echo "User:     $KIOSK_USER"
-echo "App:      $INSTALL_ROOT/bin/hdmi-kiosk"
-echo "Video:    $OUTPUT_DIR"
-echo "Bảo trì:  SSH vào máy (user $KIOSK_USER hoặc user admin có sudo)"
-echo "Thoát GUI: Ctrl+Alt+Shift+Q (rồi login TTY)"
-echo
-echo "Khởi động lại mini-PC:  sudo reboot"
-echo "Máy sẽ tự login và chạy app toàn màn hình."
+export KIOSK_USER HDMI_KIOSK_ROOT="$INSTALL_ROOT" HDMI_KIOSK_QT="$QT_PREFIX"
+bash "$SCRIPT_DIR/setup-kiosk-mode.sh"
