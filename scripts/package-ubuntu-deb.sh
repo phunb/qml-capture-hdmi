@@ -60,39 +60,56 @@ if [[ ! -x "$QT_PREFIX/bin/qmake" && ! -x "$QT_PREFIX/bin/qt-cmake" ]]; then
     -m qtmultimedia qtshadertools qtimageformats
 fi
 
-# Qt official 6.8 gắn ICU 73; Ubuntu 24.04 chỉ có ICU 74.
+# Qt official 6.8 cần ICU 73. Không apt-install libicu73 trên 24.04
+# (PPA đè file của libicu74). Chỉ giải nén *.so.73 vào lib Qt.
 export LD_LIBRARY_PATH="${QT_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
 icu73_ready() {
-  [[ -e "$QT_PREFIX/lib/libicui18n.so.73" ]] \
-    || ldconfig -p 2>/dev/null | grep -q 'libicui18n.so.73'
+  [[ -e "$QT_PREFIX/lib/libicui18n.so.73" ]]
+}
+copy_icu73_from_tree() {
+  local tree="$1"
+  install -d -m 0755 "$QT_PREFIX/lib"
+  local found=0
+  while IFS= read -r -d '' so; do
+    cp -a "$so" "$QT_PREFIX/lib/" || sudo cp -a "$so" "$QT_PREFIX/lib/"
+    found=1
+  done < <(find "$tree" -name 'libicu*.so.73*' -print0)
+  [[ "$found" -eq 1 ]]
 }
 if ! icu73_ready; then
-  echo "==> Cài libicu73 (qmlimportscanner Qt 6.8)"
-  sudo apt-get install -y software-properties-common
-  if sudo add-apt-repository -y ppa:reviczky/icu-backports \
+  echo "==> Lấy libicu*.so.73 (không cài đè hệ thống)"
+  ICU_TMP="$(mktemp -d)"
+  if sudo apt-get install -y software-properties-common \
+      && sudo add-apt-repository -y ppa:reviczky/icu-backports \
       && sudo apt-get update \
-      && sudo apt-get install -y libicu73; then
-    echo "Đã cài libicu73 từ PPA"
+      && (cd "$ICU_TMP" && apt-get download libicu73) \
+      && dpkg-deb -x "$ICU_TMP"/libicu73_*.deb "$ICU_TMP/root" \
+      && copy_icu73_from_tree "$ICU_TMP/root"; then
+    echo "Đã copy ICU 73 từ PPA .deb"
   else
-    echo "==> PPA thất bại, tải ICU 73 từ unicode-org"
-    ICU_TMP="$(mktemp -d)"
-    ICU_TGZ="$ICU_TMP/icu.tgz"
-    if ! curl -fsSL -o "$ICU_TGZ" \
-        "https://github.com/unicode-org/icu/releases/download/release-73-2/icu4c-73_2-Ubuntu22.04-x64.tgz"; then
-      echo "Không tải được ICU 73" >&2
+    echo "==> Thử Debian snapshot"
+    ICU_OK=0
+    for url in \
+        "https://snapshot.debian.org/archive/debian/20230620T151739Z/pool/main/i/icu/libicu73_73.2-1_amd64.deb" \
+        "https://snapshot.debian.org/archive/debian/20230715T025103Z/pool/main/i/icu/libicu73_73.2-1_amd64.deb"
+    do
+      if curl -fsSL -o "$ICU_TMP/libicu73.deb" "$url" \
+          && dpkg-deb -x "$ICU_TMP/libicu73.deb" "$ICU_TMP/debroot" \
+          && copy_icu73_from_tree "$ICU_TMP/debroot"; then
+        ICU_OK=1
+        break
+      fi
+    done
+    if [[ "$ICU_OK" -ne 1 ]]; then
+      echo "Không lấy được ICU 73" >&2
+      rm -rf "$ICU_TMP"
       exit 1
     fi
-    tar -xzf "$ICU_TGZ" -C "$ICU_TMP"
-    install -d -m 0755 "$QT_PREFIX/lib"
-    find "$ICU_TMP" -name 'libicu*.so.73*' -exec cp -a {} "$QT_PREFIX/lib/" \;
-    if [[ ! -e "$QT_PREFIX/lib/libicui18n.so.73" ]]; then
-      sudo find "$ICU_TMP" -name 'libicu*.so.73*' -exec cp -a {} "$QT_PREFIX/lib/" \;
-    fi
-    rm -rf "$ICU_TMP"
   fi
+  rm -rf "$ICU_TMP"
 fi
 if ! icu73_ready; then
-  echo "Vẫn thiếu libicui18n.so.73" >&2
+  echo "Vẫn thiếu $QT_PREFIX/lib/libicui18n.so.73" >&2
   ls -l "$QT_PREFIX/lib"/libicu* 2>/dev/null || true
   exit 1
 fi

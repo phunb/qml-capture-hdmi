@@ -20,14 +20,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install libicu73 (Qt 6.8)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y software-properties-common
-          sudo add-apt-repository -y ppa:reviczky/icu-backports
-          sudo apt-get update
-          sudo apt-get install -y libicu73
-
       - name: Install Qt 6.8.3
         uses: jurplel/install-qt-action@v4
         with:
