@@ -146,8 +146,6 @@ Window {
             }
             if (liveView.previewing)
                 liveView.exitPreview()
-            else if (!Library.atRoot)
-                Library.goUp()
         }
 
         function onPlayPause() {

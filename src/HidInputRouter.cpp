@@ -138,14 +138,27 @@ void HidInputRouter::handlePedalRelease()
     m_pedalDown = false;
 }
 
+void HidInputRouter::setPreviewMode(bool previewMode)
+{
+    if (m_previewMode == previewMode)
+        return;
+    m_previewMode = previewMode;
+    emit previewModeChanged();
+}
+
 int HidInputRouter::digitBit(int key)
 {
     switch (key) {
-    case Qt::Key_1: return kBit1;
-    case Qt::Key_2: return kBit2;
-    case Qt::Key_3: return kBit3;
-    case Qt::Key_4: return kBit4;
-    default: return 0;
+    case Qt::Key_1:
+        return kBit1;
+    case Qt::Key_2:
+        return kBit2;
+    case Qt::Key_3:
+        return kBit3;
+    case Qt::Key_4:
+        return kBit4;
+    default:
+        return 0;
     }
 }
 
@@ -158,6 +171,9 @@ bool HidInputRouter::handleDigitChord(int key, bool pressed, bool autoRepeat)
         return true;
 
     if (pressed) {
+        if (m_keyMask == 0)
+            m_gestureInPreview = m_previewMode;
+
         m_keyMask |= bit;
         m_gestureMask |= bit;
 
@@ -166,9 +182,21 @@ bool HidInputRouter::handleDigitChord(int key, bool pressed, bool autoRepeat)
 
         if ((m_keyMask & kChord1234) == kChord1234) {
             m_chordTimer.stop();
-            flushDigitChord();
+            m_chordFired = true;
+            emit exportToUsb();
             return true;
         }
+
+        if (!m_gestureInPreview) {
+            if (bit == kBit1)
+                emit captureSnapshot();
+            else if (bit == kBit2)
+                emit togglePreview();
+            else if (bit == kBit3)
+                emit toggleRecord();
+            return true;
+        }
+
         m_chordTimer.stop();
         return true;
     }
@@ -178,10 +206,11 @@ bool HidInputRouter::handleDigitChord(int key, bool pressed, bool autoRepeat)
         return true;
 
     m_chordTimer.stop();
-    if (!m_chordFired)
+    if (m_gestureInPreview && !m_chordFired)
         flushDigitChord();
     m_gestureMask = 0;
     m_chordFired = false;
+    m_gestureInPreview = false;
     return true;
 }
 
@@ -191,27 +220,13 @@ void HidInputRouter::flushDigitChord()
         return;
 
     const int mask = m_gestureMask;
-
-    if ((mask & kChord1234) == kChord1234) {
-        m_chordFired = true;
-        emit exportToUsb();
-        return;
-    }
-
-    if (m_keyMask != 0)
-        return;
-
     m_chordFired = true;
     if (mask == kChord12)
         emit seekBy(-10000);
     else if (mask == kChord13)
         emit seekBy(10000);
-    else if (mask == kBit3)
-        emit toggleRecord();
     else if (mask == kBit2)
         emit togglePreview();
-    else if (mask == kBit1)
-        emit captureSnapshot();
     else
         m_chordFired = false;
 }

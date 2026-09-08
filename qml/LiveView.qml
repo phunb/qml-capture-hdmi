@@ -49,12 +49,12 @@ Item {
 
     function enterPreview() {
         Library.goToSession()
-        if (latestIndex < 0)
-            return
         lastClip.parent = clipMainSlot
-        focusLatest()
         previewing = true
-        playCurrentIfVideo()
+        if (latestIndex >= 0) {
+            focusLatest()
+            playCurrentIfVideo()
+        }
     }
 
     function exitPreview() {
@@ -77,12 +77,8 @@ Item {
     }
 
     function openCurrent() {
-        if (Library.count <= 0)
+        if (Library.count <= 0 || Library.currentIsFolder)
             return
-        if (Library.currentIsFolder) {
-            Library.openCurrent()
-            return
-        }
         lastClip.parent = clipMainSlot
         previewing = true
         list.positionViewAtIndex(Library.currentIndex, ListView.Contain)
@@ -571,7 +567,10 @@ Item {
         lastClip.parent = clipPipSlot
         Capture.setPreviewOutput(liveOutput)
         Capture.startPreview()
+        HidInput.previewMode = root.previewing
     }
+
+    onPreviewingChanged: HidInput.previewMode = root.previewing
 
     Timer {
         id: selectLatestTimer

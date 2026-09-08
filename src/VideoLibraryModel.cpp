@@ -12,13 +12,11 @@ VideoLibraryModel::VideoLibraryModel(RecordingManager *recordings, QObject *pare
     , m_recordings(recordings)
     , m_watcher(new QFileSystemWatcher(this))
 {
-    m_currentPath = normalized(m_recordings->rootDirectory());
-    connect(m_recordings, &RecordingManager::rootChanged, this, &VideoLibraryModel::goToRoot);
+    connect(m_recordings, &RecordingManager::rootChanged, this, &VideoLibraryModel::goToSession);
     connect(m_recordings, &RecordingManager::recordingsChanged, this, &VideoLibraryModel::refresh);
     connect(m_recordings, &RecordingManager::sessionChanged, this, &VideoLibraryModel::goToSession);
     connect(m_watcher, &QFileSystemWatcher::directoryChanged, this, &VideoLibraryModel::refresh);
-    watchCurrentPath();
-    reload();
+    goToSession();
 }
 
 int VideoLibraryModel::rowCount(const QModelIndex &parent) const
@@ -96,7 +94,7 @@ bool VideoLibraryModel::currentIsImage() const
 
 bool VideoLibraryModel::atRoot() const
 {
-    return normalized(m_currentPath) == normalized(m_recordings->rootDirectory());
+    return true;
 }
 
 void VideoLibraryModel::refresh()
@@ -106,20 +104,15 @@ void VideoLibraryModel::refresh()
 
 void VideoLibraryModel::goToRoot()
 {
-    m_currentPath = normalized(m_recordings->rootDirectory());
-    watchCurrentPath();
-    reload();
-    emit pathChanged();
+    goToSession();
 }
 
 void VideoLibraryModel::goToSession()
 {
-    const QString session = normalized(m_recordings->directory());
-    const QString root = normalized(m_recordings->rootDirectory());
-    if (session.isEmpty() || session == root) {
-        refresh();
-        return;
-    }
+    QString session = normalized(m_recordings->directory());
+    if (session.isEmpty())
+        session = normalized(m_recordings->rootDirectory());
+    QDir().mkpath(session);
     m_currentPath = session;
     watchCurrentPath();
     reload();
@@ -128,34 +121,14 @@ void VideoLibraryModel::goToSession()
 
 bool VideoLibraryModel::goUp()
 {
-    if (atRoot())
-        return false;
-
-    const QString parent = normalized(QFileInfo(m_currentPath).absolutePath());
-    if (!isUnderRoot(parent))
-        return false;
-
-    m_currentPath = parent;
-    watchCurrentPath();
-    reload();
-    emit pathChanged();
-    return true;
+    goToSession();
+    return false;
 }
 
 bool VideoLibraryModel::openAt(int index)
 {
-    if (!isFolderAt(index))
-        return false;
-
-    const QString next = normalized(m_items.at(index).filePath);
-    if (!isUnderRoot(next))
-        return false;
-
-    m_currentPath = next;
-    watchCurrentPath();
-    reload();
-    emit pathChanged();
-    return true;
+    Q_UNUSED(index)
+    return false;
 }
 
 bool VideoLibraryModel::openCurrent()
@@ -190,26 +163,22 @@ QUrl VideoLibraryModel::urlAt(int index) const
 void VideoLibraryModel::reload()
 {
     const QString currentPath = isValidIndex(m_currentIndex) ? m_items.at(m_currentIndex).filePath : QString();
+    QString dirPath = m_currentPath;
+    const QString session = normalized(m_recordings->directory());
+    if (!session.isEmpty())
+        dirPath = session;
+    QDir().mkpath(dirPath);
+    m_currentPath = dirPath;
+
     QDir dir(m_currentPath);
     if (!dir.exists()) {
-        m_currentPath = normalized(m_recordings->rootDirectory());
-        dir.setPath(m_currentPath);
         QDir().mkpath(m_currentPath);
-        watchCurrentPath();
+        dir.setPath(m_currentPath);
     }
+    watchCurrentPath();
 
     beginResetModel();
     m_items.clear();
-
-    const QFileInfoList folders = dir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
-    for (const QFileInfo &info : folders) {
-        Item item;
-        item.filePath = info.absoluteFilePath();
-        item.fileName = info.fileName();
-        item.isFolder = true;
-        item.isImage = false;
-        m_items.append(item);
-    }
 
     const QFileInfoList files = dir.entryInfoList(
         {QStringLiteral("*.mp4"), QStringLiteral("*.mkv"), QStringLiteral("*.mov"), QStringLiteral("*.avi"),
