@@ -3,6 +3,7 @@
 #include <QCamera>
 #include <QCameraDevice>
 #include <QElapsedTimer>
+#include <QImage>
 #include <QList>
 #include <QMediaCaptureSession>
 #include <QMediaDevices>
@@ -89,6 +90,7 @@ private:
     void setRecording(bool recording);
     void onFrame(const QVideoFrame &frame);
     void refreshSignalPresent();
+    QImage imageFromVideoFrame(QVideoFrame frame) const;
     QString formatDuration(qint64 ms) const;
     void showFlash(const QString &message);
 
@@ -115,6 +117,7 @@ private:
     QString m_lastError;
     QString m_flashMessage;
     QVideoFrame m_lastFrame;
+    QImage m_lastImage;
     QElapsedTimer m_lastFrameTimer;
     QTimer m_watchdog;
     QTimer m_tick;

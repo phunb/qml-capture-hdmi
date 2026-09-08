@@ -3,6 +3,7 @@
 #include "AppSettings.h"
 #include "RecordingManager.h"
 
+#include <QByteArray>
 #include <QCameraFormat>
 #include <QColor>
 #include <QDir>
@@ -10,7 +11,9 @@
 #include <QMediaFormat>
 #include <QSize>
 #include <QUrl>
+#include <QVideoFrameFormat>
 #include <QVideoSink>
+#include <QtGlobal>
 
 namespace {
 
@@ -51,6 +54,26 @@ QCameraFormat bestFormat(const QCameraDevice &device)
             score += 500'000;
         if (fps >= 50)
             score += 50'000;
+
+        // Linux FFmpeg often cannot toImage()/encode MJPEG UVC frames (MS2109).
+        // Prefer packed YUV/RGB so snapshot + recorder get CPU-readable pixels.
+        const auto pf = format.pixelFormat();
+        if (pf == QVideoFrameFormat::Format_Jpeg) {
+#ifdef Q_OS_LINUX
+            score -= 8'000'000;
+#else
+            score -= 100'000;
+#endif
+        } else if (pf == QVideoFrameFormat::Format_YUYV
+                   || pf == QVideoFrameFormat::Format_UYVY
+                   || pf == QVideoFrameFormat::Format_NV12
+                   || pf == QVideoFrameFormat::Format_YUV420P
+                   || pf == QVideoFrameFormat::Format_ARGB8888
+                   || pf == QVideoFrameFormat::Format_BGRA8888
+                   || pf == QVideoFrameFormat::Format_RGBA8888) {
+            score += 3'000'000;
+        }
+
         if (score > bestScore) {
             bestScore = score;
             best = format;
@@ -59,11 +82,8 @@ QCameraFormat bestFormat(const QCameraDevice &device)
     return best;
 }
 
-// Capture chip with endoscope off: flat near-black. Live video (even dark)
-// has leftover light and noise, so it fails this test.
-bool frameLooksLikeNoVideo(const QVideoFrame &frame)
+bool imageLooksLikeNoVideo(const QImage &image)
 {
-    const QImage image = frame.toImage();
     if (image.isNull() || image.width() < 16 || image.height() < 16)
         return false;
 
@@ -278,10 +298,10 @@ void CaptureController::toggleRecording()
 bool CaptureController::captureSnapshot()
 {
     if (!hasDevice()) {
-        showFlash(tr("Không có thiết bị HDMI để chụp."));
+        showFlash(tr("Chưa có thiết bị để chụp."));
         return false;
     }
-    if (!m_lastFrame.isValid()) {
+    if (m_lastImage.isNull() && !m_lastFrame.isValid()) {
         showFlash(tr("Chưa có khung hình để chụp."));
         return false;
     }
@@ -294,9 +314,9 @@ bool CaptureController::captureSnapshot()
         return false;
     }
 
-    const QImage image = m_lastFrame.toImage();
+    const QImage image = !m_lastImage.isNull() ? m_lastImage : imageFromVideoFrame(m_lastFrame);
     if (image.isNull()) {
-        showFlash(tr("Không đọc được khung hình HDMI."));
+        showFlash(tr("Không đọc được khung hình từ thiết bị."));
         return false;
     }
 
@@ -389,6 +409,15 @@ void CaptureController::configureCameraFormat()
     const QCameraFormat format = bestFormat(m_camera.cameraDevice());
     if (!format.isNull())
         m_camera.setCameraFormat(format);
+    qInfo() << "Camera format" << format.resolution()
+            << "fps" << format.maxFrameRate()
+            << "pixel" << format.pixelFormat();
+    const QSize size = format.resolution();
+    if (size.isValid())
+        m_recorder.setVideoResolution(size);
+    const qreal fps = format.maxFrameRate();
+    if (fps > 1.0)
+        m_recorder.setVideoFrameRate(qMin(30.0, fps));
 }
 
 void CaptureController::configureRecorder()
@@ -397,8 +426,13 @@ void CaptureController::configureRecorder()
     format.setFileFormat(QMediaFormat::MPEG4);
     format.setVideoCodec(QMediaFormat::VideoCodec::H264);
     format.setAudioCodec(QMediaFormat::AudioCodec::Unspecified);
+    if (!format.isSupported(QMediaFormat::Encode))
+        format.setVideoCodec(QMediaFormat::VideoCodec::MPEG4);
+    if (!format.isSupported(QMediaFormat::Encode))
+        format.setVideoCodec(QMediaFormat::VideoCodec::Unspecified);
     m_recorder.setMediaFormat(format);
-    m_recorder.setQuality(QMediaRecorder::HighQuality);
+    m_recorder.setQuality(QMediaRecorder::NormalQuality);
+    m_recorder.setEncodingMode(QMediaRecorder::ConstantQualityEncoding);
 }
 
 void CaptureController::updateStatus()
@@ -482,8 +516,13 @@ void CaptureController::onFrame(const QVideoFrame &frame)
     m_lastFrame = frame;
     m_lastFrameTimer.restart();
     ++m_frameCounter;
+    if (m_frameCounter % 2 == 0 || m_lastImage.isNull()) {
+        const QImage image = imageFromVideoFrame(frame);
+        if (!image.isNull())
+            m_lastImage = image;
+    }
     if (m_frameCounter % 8 == 0) {
-        if (frameLooksLikeNoVideo(frame)) {
+        if (imageLooksLikeNoVideo(m_lastImage)) {
             if (m_blankStreak < 100)
                 ++m_blankStreak;
         } else {
@@ -491,6 +530,54 @@ void CaptureController::onFrame(const QVideoFrame &frame)
         }
     }
     refreshSignalPresent();
+}
+
+QImage CaptureController::imageFromVideoFrame(QVideoFrame frame) const
+{
+    if (!frame.isValid())
+        return {};
+
+    // MJPEG from UVC (MS2109): QVideoFrame::toImage() logs
+    // "JPEG datastream contains no image" on Linux FFmpeg and returns null.
+    if (frame.pixelFormat() == QVideoFrameFormat::Format_Jpeg) {
+        if (!frame.map(QVideoFrame::ReadOnly))
+            return {};
+        QImage image;
+        const uchar *bits = frame.bits(0);
+        const int nbytes = frame.mappedBytes(0);
+        if (bits && nbytes > 0)
+            image.loadFromData(bits, nbytes, "JPEG");
+        frame.unmap();
+        return image;
+    }
+
+    QImage image = frame.toImage();
+    if (!image.isNull())
+        return image;
+
+    if (!frame.map(QVideoFrame::ReadOnly))
+        return {};
+
+    image = frame.toImage();
+    if (!image.isNull()) {
+        frame.unmap();
+        return image;
+    }
+
+    QImage::Format qfmt = QImage::Format_Invalid;
+    const auto pf = frame.pixelFormat();
+    if (pf == QVideoFrameFormat::Format_BGRA8888 || pf == QVideoFrameFormat::Format_ARGB8888)
+        qfmt = QImage::Format_ARGB32;
+    else if (pf == QVideoFrameFormat::Format_RGBA8888)
+        qfmt = QImage::Format_RGBA8888;
+
+    if (qfmt != QImage::Format_Invalid) {
+        const uchar *bits = frame.bits(0);
+        if (bits)
+            image = QImage(bits, frame.width(), frame.height(), frame.bytesPerLine(0), qfmt).copy();
+    }
+    frame.unmap();
+    return image;
 }
 
 QString CaptureController::recordingDurationText() const
