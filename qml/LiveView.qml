@@ -261,6 +261,20 @@ Item {
                 }
 
                 Text {
+                    visible: !Capture.videoPresent && Kiosk.idlePowerOffRemainingSec > 0
+                             && Kiosk.idlePowerOffRemainingSec <= 120
+                    text: {
+                        const sec = Kiosk.idlePowerOffRemainingSec
+                        const mm = Math.floor(sec / 60)
+                        const ss = sec % 60
+                        return qsTr("Tắt máy %1:%2").arg(mm).arg(ss < 10 ? "0" + ss : ss)
+                    }
+                    color: Theme.warning
+                    font.pixelSize: Theme.fontSmall
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Text {
                     visible: Recordings.sessionName.length > 0
                     text: Recordings.sessionName
                     color: Theme.text

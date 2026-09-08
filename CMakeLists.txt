@@ -75,7 +75,7 @@ target_link_libraries(hdmi-kiosk PRIVATE
 )
 
 if(WIN32)
-    target_link_libraries(hdmi-kiosk PRIVATE user32)
+    target_link_libraries(hdmi-kiosk PRIVATE user32 advapi32)
     if(NOT HDMI_KIOSK_CONSOLE)
         set_target_properties(hdmi-kiosk PROPERTIES WIN32_EXECUTABLE TRUE)
     endif()

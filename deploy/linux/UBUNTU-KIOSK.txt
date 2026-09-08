@@ -17,3 +17,7 @@
 # Video lưu: /home/kiosk/output
 # Bảo trì: ssh admin@IP
 # Gỡ autostart kiosk: sudo ./deploy/linux/uninstall-ubuntu-kiosk.sh
+#
+# Tự tắt máy: không có tín hiệu HDMI (hoặc nguồn HDMI tắt) liên tục 15 phút.
+# Tắt tính năng: HDMI_KIOSK_IDLE_SHUTDOWN=0
+# Đổi thời gian: HDMI_KIOSK_IDLE_MINUTES=15

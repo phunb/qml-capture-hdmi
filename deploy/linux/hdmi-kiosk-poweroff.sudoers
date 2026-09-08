@@ -1,0 +1,2 @@
+# Fallback nếu polkit không cho poweroff (user kiosk, không mật khẩu).
+kiosk ALL=(root) NOPASSWD: /usr/bin/systemctl poweroff, /usr/sbin/poweroff, /sbin/poweroff, /usr/sbin/shutdown -h now

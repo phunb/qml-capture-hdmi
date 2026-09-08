@@ -75,6 +75,7 @@ int main(int argc, char *argv[])
     KioskController kiosk;
     HidInputRouter hidInput;
     kiosk.setLocked(settings.kioskMode());
+    kiosk.watchIdlePowerOff(&capture, &recordings);
 
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("Capture"), &capture);

@@ -1,0 +1,8 @@
+// Cho user kiosk tắt máy khi app hết tín hiệu HDMI (không cần mật khẩu).
+polkit.addRule(function(action, subject) {
+    if (subject.user == "kiosk" && (
+            action.id == "org.freedesktop.login1.power-off" ||
+            action.id == "org.freedesktop.login1.power-off-multiple-sessions")) {
+        return polkit.Result.YES;
+    }
+});

@@ -128,6 +128,20 @@ HDMI_KIOSK_OUTPUT_DIR=${OUTPUT_DIR}
 HDMI_KIOSK_QT=${QT_PREFIX}
 EOF
 
+# User kiosk được tắt máy khi app idle 15 phút không có tín hiệu HDMI
+install -d /etc/polkit-1/rules.d
+if [[ -f "$SCRIPT_DIR/50-hdmi-kiosk-poweroff.rules" ]]; then
+  sed "s/\"kiosk\"/\"${KIOSK_USER}\"/" "$SCRIPT_DIR/50-hdmi-kiosk-poweroff.rules" \
+    > /etc/polkit-1/rules.d/50-hdmi-kiosk-poweroff.rules
+  chmod 0644 /etc/polkit-1/rules.d/50-hdmi-kiosk-poweroff.rules
+fi
+if [[ -f "$SCRIPT_DIR/hdmi-kiosk-poweroff.sudoers" ]]; then
+  sed "s/^kiosk /${KIOSK_USER} /" "$SCRIPT_DIR/hdmi-kiosk-poweroff.sudoers" \
+    > /etc/sudoers.d/hdmi-kiosk-poweroff
+  chmod 0440 /etc/sudoers.d/hdmi-kiosk-poweroff
+  visudo -cf /etc/sudoers.d/hdmi-kiosk-poweroff >/dev/null
+fi
+
 echo
 echo "==== ĐÃ CÀI UBUNTU KIOSK ===="
 echo "User:     $KIOSK_USER"

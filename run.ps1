@@ -3,6 +3,8 @@ $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $exe = Join-Path $root "build\hdmi-kiosk.exe"
 
 $env:Path = "C:\Qt\Tools\mingw1310_64\bin;C:\Qt\6.8.3\mingw_64\bin;" + $env:Path
+# Không tắt OS khi test trên máy dev (kiosk production không set biến này)
+$env:HDMI_KIOSK_IDLE_SHUTDOWN = "0"
 
 if (-not (Test-Path $exe)) {
     Write-Host "Chua co file build. Chay .\scripts\build.ps1 truoc."

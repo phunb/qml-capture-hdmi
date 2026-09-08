@@ -1,13 +1,62 @@
 #include "KioskController.h"
+#include "CaptureController.h"
+#include "RecordingManager.h"
 
+#include <QDebug>
 #include <QGuiApplication>
+#include <QProcess>
 #ifdef Q_OS_WIN
 #  include <QMetaObject>
 #endif
+#include <QtGlobal>
 
 #ifdef Q_OS_WIN
 KioskController *KioskController::s_instance = nullptr;
 #endif
+
+namespace {
+
+bool idleShutdownDisabled()
+{
+    if (qEnvironmentVariableIntValue("HDMI_KIOSK_SMOKE_TEST") > 0)
+        return true;
+    const QString flag = qEnvironmentVariable("HDMI_KIOSK_IDLE_SHUTDOWN");
+    if (flag.isEmpty())
+        return false;
+    return flag == QLatin1String("0")
+        || flag.compare(QLatin1String("false"), Qt::CaseInsensitive) == 0
+        || flag.compare(QLatin1String("off"), Qt::CaseInsensitive) == 0;
+}
+
+int idleShutdownMinutes()
+{
+    const int minutes = qEnvironmentVariableIntValue("HDMI_KIOSK_IDLE_MINUTES");
+    return minutes > 0 ? minutes : 15;
+}
+
+#ifdef Q_OS_WIN
+bool enableShutdownPrivilege()
+{
+    HANDLE token = nullptr;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &token))
+        return false;
+
+    TOKEN_PRIVILEGES privileges{};
+    privileges.PrivilegeCount = 1;
+    privileges.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+    if (!LookupPrivilegeValueW(nullptr, SE_SHUTDOWN_NAME, &privileges.Privileges[0].Luid)) {
+        CloseHandle(token);
+        return false;
+    }
+
+    AdjustTokenPrivileges(token, FALSE, &privileges, 0, nullptr, nullptr);
+    const DWORD err = GetLastError();
+    CloseHandle(token);
+    return err == ERROR_SUCCESS;
+}
+#endif
+
+} // namespace
 
 KioskController::KioskController(QObject *parent)
     : QObject(parent)
@@ -15,6 +64,12 @@ KioskController::KioskController(QObject *parent)
 #ifdef Q_OS_WIN
     s_instance = this;
 #endif
+    m_idleTimer.setSingleShot(true);
+    m_idleTick.setInterval(1000);
+    connect(&m_idleTimer, &QTimer::timeout, this, &KioskController::onIdleTimeout);
+    connect(&m_idleTick, &QTimer::timeout, this, [this]() {
+        emit idlePowerOffRemainingSecChanged();
+    });
 }
 
 KioskController::~KioskController()
@@ -59,6 +114,123 @@ void KioskController::exitApp()
 {
     setLocked(false);
     QGuiApplication::quit();
+}
+
+int KioskController::idlePowerOffRemainingSec() const
+{
+    if (!m_idleTimer.isActive())
+        return 0;
+    const int ms = m_idleTimer.remainingTime();
+    return ms > 0 ? (ms + 999) / 1000 : 0;
+}
+
+void KioskController::watchIdlePowerOff(CaptureController *capture, RecordingManager *recordings)
+{
+    m_capture = capture;
+    m_recordings = recordings;
+    if (!capture || idleShutdownDisabled()) {
+        qInfo() << "Idle OS power-off disabled";
+        return;
+    }
+
+    m_idleWatchEnabled = true;
+    m_idleTimer.setInterval(idleShutdownMinutes() * 60 * 1000);
+    connect(capture, &CaptureController::videoPresentChanged, this, &KioskController::syncIdleTimer);
+    connect(capture, &CaptureController::recordingChanged, this, &KioskController::syncIdleTimer);
+    if (recordings)
+        connect(recordings, &RecordingManager::copyingChanged, this, &KioskController::syncIdleTimer);
+
+    qInfo() << "Idle OS power-off after" << idleShutdownMinutes() << "min without HDMI video";
+    syncIdleTimer();
+}
+
+void KioskController::syncIdleTimer()
+{
+    if (!m_idleWatchEnabled || m_shuttingDown || !m_capture)
+        return;
+
+    const bool busy = m_capture->recording() || (m_recordings && m_recordings->copying());
+    const bool idle = !m_capture->videoPresent() && !busy;
+    if (idle) {
+        if (!m_idleTimer.isActive()) {
+            m_idleTimer.start();
+            m_idleTick.start();
+            qInfo() << "No HDMI video; OS power-off in" << idleShutdownMinutes() << "min";
+            emit idlePowerOffRemainingSecChanged();
+        }
+        return;
+    }
+
+    if (m_idleTimer.isActive()) {
+        m_idleTimer.stop();
+        m_idleTick.stop();
+        emit idlePowerOffRemainingSecChanged();
+        qInfo() << "HDMI video present; idle power-off cancelled";
+    }
+}
+
+void KioskController::onIdleTimeout()
+{
+    m_idleTick.stop();
+    emit idlePowerOffRemainingSecChanged();
+    if (!m_capture || m_capture->videoPresent()) {
+        syncIdleTimer();
+        return;
+    }
+    qWarning() << "No HDMI video for" << idleShutdownMinutes() << "min; powering off OS";
+    performOsShutdown();
+}
+
+void KioskController::performOsShutdown()
+{
+    if (m_powerOffIssued)
+        return;
+
+    m_shuttingDown = true;
+    m_idleTimer.stop();
+    m_idleTick.stop();
+
+    if (m_capture && m_capture->recording()) {
+        m_capture->stopRecording();
+        QTimer::singleShot(2000, this, &KioskController::performOsShutdown);
+        return;
+    }
+    if (m_recordings && m_recordings->copying()) {
+        qInfo() << "Waiting for USB copy before OS power-off";
+        QTimer::singleShot(1000, this, &KioskController::performOsShutdown);
+        return;
+    }
+
+    m_powerOffIssued = true;
+
+#ifdef Q_OS_WIN
+    if (enableShutdownPrivilege()) {
+        if (ExitWindowsEx(EWX_POWEROFF | EWX_FORCEIFHUNG,
+                          SHTDN_REASON_MAJOR_APPLICATION | SHTDN_REASON_MINOR_MAINTENANCE
+                              | SHTDN_REASON_FLAG_PLANNED)) {
+            return;
+        }
+        qWarning() << "ExitWindowsEx failed" << GetLastError();
+    }
+    if (!QProcess::startDetached(QStringLiteral("shutdown"),
+                                 {QStringLiteral("/s"), QStringLiteral("/t"), QStringLiteral("0"),
+                                  QStringLiteral("/f")})) {
+        qWarning() << "Windows shutdown command failed";
+    }
+#else
+    if (QProcess::startDetached(QStringLiteral("systemctl"), {QStringLiteral("poweroff")}))
+        return;
+    if (QProcess::startDetached(QStringLiteral("loginctl"), {QStringLiteral("poweroff")}))
+        return;
+    if (QProcess::startDetached(QStringLiteral("sudo"),
+                                {QStringLiteral("-n"), QStringLiteral("systemctl"), QStringLiteral("poweroff")}))
+        return;
+    if (QProcess::startDetached(QStringLiteral("sudo"),
+                                {QStringLiteral("-n"), QStringLiteral("/usr/sbin/poweroff")}))
+        return;
+    if (!QProcess::startDetached(QStringLiteral("shutdown"), {QStringLiteral("-h"), QStringLiteral("now")}))
+        qWarning() << "Linux power-off commands failed";
+#endif
 }
 
 void KioskController::applyWindowState()

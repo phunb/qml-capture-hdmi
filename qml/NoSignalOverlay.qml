@@ -33,5 +33,17 @@ Item {
             wrapMode: Text.WordWrap
             horizontalAlignment: Text.AlignHCenter
         }
+
+        Text {
+            width: parent.width
+            visible: Kiosk.idlePowerOffRemainingSec > 0 && Kiosk.idlePowerOffRemainingSec <= 120
+            text: qsTr("Tự tắt máy sau %1:%2")
+                  .arg(Math.floor(Kiosk.idlePowerOffRemainingSec / 60))
+                  .arg(("0" + (Kiosk.idlePowerOffRemainingSec % 60)).slice(-2))
+            color: Theme.warning
+            font.pixelSize: Theme.fontBody
+            wrapMode: Text.WordWrap
+            horizontalAlignment: Text.AlignHCenter
+        }
     }
 }
