@@ -57,35 +57,44 @@ if [[ ! -x "$QT_PREFIX/bin/qmake" && ! -x "$QT_PREFIX/bin/qt-cmake" ]]; then
   sudo mkdir -p "$QT_ROOT"
   "$VENV/bin/python" -m aqt install-qt \
     -O "$QT_ROOT" linux desktop "$QT_VERSION" gcc_64 \
-    -m qtmultimedia qtshadertools qtimageformats \
-    --archives qtbase qtdeclarative qtsvg qttools
+    -m qtmultimedia qtshadertools qtimageformats
 fi
 
 # Qt official 6.8 gắn ICU 73; Ubuntu 24.04 chỉ có ICU 74.
 export LD_LIBRARY_PATH="${QT_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
-if [[ ! -e "$QT_PREFIX/lib/libicui18n.so.73" ]] && ! ldconfig -p 2>/dev/null | grep -q 'libicui18n.so.73'; then
-  echo "==> Tải libicu73 (qmlimportscanner của Qt 6.8)"
-  ICU_TMP="$(mktemp -d)"
-  ICU_OK=0
-  for url in \
-      "https://archive.ubuntu.com/ubuntu/pool/main/i/icu/libicu73_73.2-1ubuntu4_amd64.deb" \
-      "https://archive.ubuntu.com/ubuntu/pool/main/i/icu/libicu73_73.2-1ubuntu3_amd64.deb" \
-      "https://archive.ubuntu.com/ubuntu/pool/main/i/icu/libicu73_73.2-1ubuntu2_amd64.deb"
-  do
-    if curl -fsSL -o "$ICU_TMP/libicu73.deb" "$url"; then
-      ICU_OK=1
-      break
+icu73_ready() {
+  [[ -e "$QT_PREFIX/lib/libicui18n.so.73" ]] \
+    || ldconfig -p 2>/dev/null | grep -q 'libicui18n.so.73'
+}
+if ! icu73_ready; then
+  echo "==> Cài libicu73 (qmlimportscanner Qt 6.8)"
+  sudo apt-get install -y software-properties-common
+  if sudo add-apt-repository -y ppa:reviczky/icu-backports \
+      && sudo apt-get update \
+      && sudo apt-get install -y libicu73; then
+    echo "Đã cài libicu73 từ PPA"
+  else
+    echo "==> PPA thất bại, tải ICU 73 từ unicode-org"
+    ICU_TMP="$(mktemp -d)"
+    ICU_TGZ="$ICU_TMP/icu.tgz"
+    if ! curl -fsSL -o "$ICU_TGZ" \
+        "https://github.com/unicode-org/icu/releases/download/release-73-2/icu4c-73_2-Ubuntu22.04-x64.tgz"; then
+      echo "Không tải được ICU 73" >&2
+      exit 1
     fi
-  done
-  if [[ "$ICU_OK" -ne 1 ]]; then
-    echo "Không tải được libicu73" >&2
-    exit 1
+    tar -xzf "$ICU_TGZ" -C "$ICU_TMP"
+    install -d -m 0755 "$QT_PREFIX/lib"
+    find "$ICU_TMP" -name 'libicu*.so.73*' -exec cp -a {} "$QT_PREFIX/lib/" \;
+    if [[ ! -e "$QT_PREFIX/lib/libicui18n.so.73" ]]; then
+      sudo find "$ICU_TMP" -name 'libicu*.so.73*' -exec cp -a {} "$QT_PREFIX/lib/" \;
+    fi
+    rm -rf "$ICU_TMP"
   fi
-  dpkg-deb -x "$ICU_TMP/libicu73.deb" "$ICU_TMP/root"
-  install -d -m 0755 "$QT_PREFIX/lib"
-  cp -a "$ICU_TMP/root/usr/lib/x86_64-linux-gnu"/libicu*.so.73* "$QT_PREFIX/lib/" \
-    || sudo cp -a "$ICU_TMP/root/usr/lib/x86_64-linux-gnu"/libicu*.so.73* "$QT_PREFIX/lib/"
-  rm -rf "$ICU_TMP"
+fi
+if ! icu73_ready; then
+  echo "Vẫn thiếu libicui18n.so.73" >&2
+  ls -l "$QT_PREFIX/lib"/libicu* 2>/dev/null || true
+  exit 1
 fi
 
 BUILD_DIR="${HDMI_KIOSK_BUILD_DIR:-$ROOT/build-deb}"
