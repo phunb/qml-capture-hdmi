@@ -61,6 +61,33 @@ if [[ ! -x "$QT_PREFIX/bin/qmake" && ! -x "$QT_PREFIX/bin/qt-cmake" ]]; then
     --archives qtbase qtdeclarative qtsvg qttools
 fi
 
+# Qt official 6.8 gắn ICU 73; Ubuntu 24.04 chỉ có ICU 74.
+export LD_LIBRARY_PATH="${QT_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
+if [[ ! -e "$QT_PREFIX/lib/libicui18n.so.73" ]] && ! ldconfig -p 2>/dev/null | grep -q 'libicui18n.so.73'; then
+  echo "==> Tải libicu73 (qmlimportscanner của Qt 6.8)"
+  ICU_TMP="$(mktemp -d)"
+  ICU_OK=0
+  for url in \
+      "https://archive.ubuntu.com/ubuntu/pool/main/i/icu/libicu73_73.2-1ubuntu4_amd64.deb" \
+      "https://archive.ubuntu.com/ubuntu/pool/main/i/icu/libicu73_73.2-1ubuntu3_amd64.deb" \
+      "https://archive.ubuntu.com/ubuntu/pool/main/i/icu/libicu73_73.2-1ubuntu2_amd64.deb"
+  do
+    if curl -fsSL -o "$ICU_TMP/libicu73.deb" "$url"; then
+      ICU_OK=1
+      break
+    fi
+  done
+  if [[ "$ICU_OK" -ne 1 ]]; then
+    echo "Không tải được libicu73" >&2
+    exit 1
+  fi
+  dpkg-deb -x "$ICU_TMP/libicu73.deb" "$ICU_TMP/root"
+  install -d -m 0755 "$QT_PREFIX/lib"
+  cp -a "$ICU_TMP/root/usr/lib/x86_64-linux-gnu"/libicu*.so.73* "$QT_PREFIX/lib/" \
+    || sudo cp -a "$ICU_TMP/root/usr/lib/x86_64-linux-gnu"/libicu*.so.73* "$QT_PREFIX/lib/"
+  rm -rf "$ICU_TMP"
+fi
+
 BUILD_DIR="${HDMI_KIOSK_BUILD_DIR:-$ROOT/build-deb}"
 echo "==> CMake $BUILD_DIR"
 cmake -S "$ROOT" -B "$BUILD_DIR" -G Ninja \

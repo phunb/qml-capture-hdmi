@@ -30,7 +30,7 @@ jobs:
           modules: qtmultimedia qtshadertools qtimageformats
           archives: qtbase qtdeclarative qtsvg qttools
           cache: true
-          cache-key-prefix: qt-6.8.3-linux-kiosk
+          cache-key-prefix: qt-6.8.3-linux-kiosk-icu73
 
       - name: Build offline installer
         env:
@@ -44,6 +44,9 @@ jobs:
             export HDMI_KIOSK_QT="$(qmake -query QT_INSTALL_PREFIX)"
           fi
           echo "HDMI_KIOSK_QT=${HDMI_KIOSK_QT:-}"
+          if [[ -n "${HDMI_KIOSK_QT:-}" ]]; then
+            export LD_LIBRARY_PATH="${HDMI_KIOSK_QT}/lib:${LD_LIBRARY_PATH:-}"
+          fi
           ./scripts/package-ubuntu-deb.sh
 
       - name: USB instructions
