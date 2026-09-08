@@ -96,7 +96,7 @@ Item {
         if (!root.previewing)
             return
         if (Library.currentIsImage)
-            lastClip.zoomBy(ms > 0 ? 0.15 : -0.15)
+            lastClip.zoomBy(ms > 0 ? 0.25 : -0.25)
         else
             lastClip.seekBy(ms)
     }

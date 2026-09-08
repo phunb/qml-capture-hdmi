@@ -1,7 +1,6 @@
 #pragma once
 
 #include <QObject>
-#include <QTimer>
 
 #ifdef Q_OS_WIN
 #  include <windows.h>
@@ -43,23 +42,25 @@ signals:
 
 private:
     bool handleKey(class QKeyEvent *event, bool emitSignals = true);
-    bool handlePedalKey(int key, bool pressed, bool autoRepeat);
-    bool handleDigitChord(int key, bool pressed, bool autoRepeat);
-    void handlePedalPress();
-    void handlePedalRelease();
-    void flushDigitChord();
+    bool handleFootPedalKey(int key, bool pressed, bool autoRepeat);
+    bool handlePadEvent(int key, bool pressed, bool autoRepeat);
+    void handleFootPedalPress();
+    void handleFootPedalRelease();
+    void onDigitDown(int bit);
+    void onReleaseLetter(int bit);
+    void onMuteLetter(int bit);
+    void fireDigitTap(int bit);
     static int digitBit(int key);
+    static int releaseBit(int key);
+    static int muteBit(int key);
 
 #ifdef Q_OS_WIN
     static HidInputRouter *s_instance;
     HHOOK m_keyboardHook = nullptr;
 #endif
 
-    QTimer m_chordTimer;
-    bool m_pedalDown = false;
+    bool m_footPedalDown = false;
     bool m_previewMode = false;
-    bool m_gestureInPreview = false;
-    int m_keyMask = 0;
-    int m_gestureMask = 0;
-    bool m_chordFired = false;
+    int m_heldForChord = 0;
+    int m_muteRelease = 0;
 };

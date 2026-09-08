@@ -36,6 +36,14 @@ Window {
     LiveView {
         id: liveView
         anchors.fill: parent
+        onPreviewingChanged: HidInput.previewMode = previewing
+        Component.onCompleted: HidInput.previewMode = previewing
+    }
+
+    Binding {
+        target: HidInput
+        property: "previewMode"
+        value: liveView.previewing
     }
 
     ConfirmDialog {

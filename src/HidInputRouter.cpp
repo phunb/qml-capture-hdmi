@@ -6,28 +6,84 @@
 #include <QtGlobal>
 
 namespace {
-constexpr int kPedalPressVk = 0x43;   // ElfKey Double trigger: press = C
-constexpr int kPedalReleaseVk = 0x42; // ElfKey Double trigger: release = B
+constexpr int kFootPressVk = 0x43;    // ElfKey: press = C
+constexpr int kFootReleaseVk = 0x42;  // ElfKey: release = B
 constexpr int kBit1 = 1 << 0;
 constexpr int kBit2 = 1 << 1;
 constexpr int kBit3 = 1 << 2;
-constexpr int kBit4 = 1 << 3;
-constexpr int kChord12 = kBit1 | kBit2;
-constexpr int kChord13 = kBit1 | kBit3;
-constexpr int kChord1234 = kBit1 | kBit2 | kBit3 | kBit4;
+
+int digitBitImpl(int key)
+{
+    switch (key) {
+    case Qt::Key_1:
+        return kBit1;
+    case Qt::Key_2:
+        return kBit2;
+    case Qt::Key_3:
+        return kBit3;
+    default:
+        return 0;
+    }
 }
+
+int releaseBitImpl(int key)
+{
+    switch (key) {
+    case Qt::Key_Q:
+        return kBit1;
+    case Qt::Key_W:
+        return kBit2;
+    case Qt::Key_E:
+        return kBit3;
+    default:
+        return 0;
+    }
+}
+
+int muteBitImpl(int key)
+{
+    switch (key) {
+    case Qt::Key_A:
+        return kBit1;
+    case Qt::Key_S:
+        return kBit2;
+    case Qt::Key_D:
+        return kBit3;
+    default:
+        return 0;
+    }
+}
+
+bool isPadKey(int key)
+{
+    return digitBitImpl(key) != 0 || releaseBitImpl(key) != 0 || muteBitImpl(key) != 0
+        || key == int(Qt::Key_N);
+}
+} // namespace
 
 #ifdef Q_OS_WIN
 HidInputRouter *HidInputRouter::s_instance = nullptr;
 #endif
 
+int HidInputRouter::digitBit(int key)
+{
+    return digitBitImpl(key);
+}
+
+int HidInputRouter::releaseBit(int key)
+{
+    return releaseBitImpl(key);
+}
+
+int HidInputRouter::muteBit(int key)
+{
+    return muteBitImpl(key);
+}
+
 HidInputRouter::HidInputRouter(QObject *parent)
     : QObject(parent)
 {
     qApp->installEventFilter(this);
-    m_chordTimer.setSingleShot(true);
-    m_chordTimer.setInterval(160);
-    connect(&m_chordTimer, &QTimer::timeout, this, &HidInputRouter::flushDigitChord);
 
 #ifdef Q_OS_WIN
     s_instance = this;
@@ -51,18 +107,74 @@ HidInputRouter::~HidInputRouter()
 }
 
 #ifdef Q_OS_WIN
+namespace {
+int qtKeyFromPadVk(DWORD vk)
+{
+    switch (vk) {
+    case 0x31:
+        return int(Qt::Key_1);
+    case 0x32:
+        return int(Qt::Key_2);
+    case 0x33:
+        return int(Qt::Key_3);
+    case 0x41:
+        return int(Qt::Key_A);
+    case 0x53:
+        return int(Qt::Key_S);
+    case 0x44:
+        return int(Qt::Key_D);
+    case 0x51:
+        return int(Qt::Key_Q);
+    case 0x57:
+        return int(Qt::Key_W);
+    case 0x45:
+        return int(Qt::Key_E);
+    case 0x4E:
+        return int(Qt::Key_N);
+    default:
+        return 0;
+    }
+}
+
+bool isPadVk(DWORD vk)
+{
+    return qtKeyFromPadVk(vk) != 0;
+}
+
+bool modifiersDown()
+{
+    const auto down = [](int vk) {
+        return (GetAsyncKeyState(vk) & 0x8000) != 0;
+    };
+    return down(VK_CONTROL) && down(VK_MENU) && down(VK_SHIFT);
+}
+} // namespace
+
 LRESULT CALLBACK HidInputRouter::lowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam)
 {
     if (nCode == HC_ACTION && s_instance) {
         const auto *info = reinterpret_cast<KBDLLHOOKSTRUCT *>(lParam);
         const bool keyDown = wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN;
-        if (info->vkCode == static_cast<DWORD>(kPedalPressVk)
-            || info->vkCode == static_cast<DWORD>(kPedalReleaseVk)) {
-            const int key = info->vkCode == static_cast<DWORD>(kPedalPressVk)
+        if (info->vkCode == static_cast<DWORD>(kFootPressVk)
+            || info->vkCode == static_cast<DWORD>(kFootReleaseVk)) {
+            const int key = info->vkCode == static_cast<DWORD>(kFootPressVk)
                                 ? int(Qt::Key_C)
                                 : int(Qt::Key_B);
             QMetaObject::invokeMethod(s_instance, [inst = s_instance, key, keyDown]() {
-                inst->handlePedalKey(key, keyDown, false);
+                inst->handleFootPedalKey(key, keyDown, false);
+            }, Qt::QueuedConnection);
+            return 1;
+        }
+        if (isPadVk(info->vkCode)) {
+            if (info->vkCode == 0x51 && keyDown && modifiersDown()) {
+                QMetaObject::invokeMethod(s_instance, [inst = s_instance]() {
+                    emit inst->adminExit();
+                }, Qt::QueuedConnection);
+                return 1;
+            }
+            const int key = qtKeyFromPadVk(info->vkCode);
+            QMetaObject::invokeMethod(s_instance, [inst = s_instance, key, keyDown]() {
+                inst->handlePadEvent(key, keyDown, false);
             }, Qt::QueuedConnection);
             return 1;
         }
@@ -80,24 +192,31 @@ bool HidInputRouter::eventFilter(QObject *watched, QEvent *event)
         auto *key = static_cast<QKeyEvent *>(event);
         if (key->key() == Qt::Key_C || key->key() == Qt::Key_B)
             return true;
+        if (isPadKey(int(key->key())))
+            return true;
     }
 #endif
 
     if (event->type() == QEvent::KeyPress || event->type() == QEvent::KeyRelease) {
         auto *key = static_cast<QKeyEvent *>(event);
-        if (handlePedalKey(int(key->key()), event->type() == QEvent::KeyPress, key->isAutoRepeat()))
+        const bool pressed = event->type() == QEvent::KeyPress;
+        if (pressed && key->modifiers().testFlag(Qt::ControlModifier)
+            && key->modifiers().testFlag(Qt::AltModifier)
+            && key->modifiers().testFlag(Qt::ShiftModifier)
+            && key->key() == Qt::Key_Q) {
+            if (!key->isAutoRepeat())
+                emit adminExit();
             return true;
-        if (handleDigitChord(int(key->key()), event->type() == QEvent::KeyPress, key->isAutoRepeat()))
+        }
+        if (handleFootPedalKey(int(key->key()), pressed, key->isAutoRepeat()))
+            return true;
+        if (handlePadEvent(int(key->key()), pressed, key->isAutoRepeat()))
             return true;
     }
 
     if (event->type() == QEvent::ShortcutOverride) {
         auto *key = static_cast<QKeyEvent *>(event);
-        if (digitBit(int(key->key())) != 0) {
-            event->accept();
-            return true;
-        }
-        if (handleKey(key, false)) {
+        if (isPadKey(int(key->key())) || handleKey(key, false)) {
             event->accept();
             return true;
         }
@@ -109,33 +228,38 @@ bool HidInputRouter::eventFilter(QObject *watched, QEvent *event)
     return false;
 }
 
-bool HidInputRouter::handlePedalKey(int key, bool pressed, bool autoRepeat)
+bool HidInputRouter::handleFootPedalKey(int key, bool pressed, bool autoRepeat)
 {
     if (key != Qt::Key_C && key != Qt::Key_B)
         return false;
     if (autoRepeat || !pressed)
         return true;
-    if (key == Qt::Key_C)
-        handlePedalPress();
+    if (key == Qt::Key_C) {
+        handleFootPedalPress();
+        return true;
+    }
+    // B: nhả pedal chân nếu đang giữ C; không thì zoom out / tua −10s (thay 1+2).
+    if (m_footPedalDown)
+        handleFootPedalRelease();
     else
-        handlePedalRelease();
+        emit seekBy(-10000);
     return true;
 }
 
-void HidInputRouter::handlePedalPress()
+void HidInputRouter::handleFootPedalPress()
 {
-    if (m_pedalDown)
+    if (m_footPedalDown)
         return;
-    m_pedalDown = true;
+    m_footPedalDown = true;
     qInfo() << "Pedal press (C) -> snapshot";
     emit pedalTap();
 }
 
-void HidInputRouter::handlePedalRelease()
+void HidInputRouter::handleFootPedalRelease()
 {
-    if (!m_pedalDown)
+    if (!m_footPedalDown)
         return;
-    m_pedalDown = false;
+    m_footPedalDown = false;
 }
 
 void HidInputRouter::setPreviewMode(bool previewMode)
@@ -146,89 +270,75 @@ void HidInputRouter::setPreviewMode(bool previewMode)
     emit previewModeChanged();
 }
 
-int HidInputRouter::digitBit(int key)
+bool HidInputRouter::handlePadEvent(int key, bool pressed, bool autoRepeat)
 {
-    switch (key) {
-    case Qt::Key_1:
-        return kBit1;
-    case Qt::Key_2:
-        return kBit2;
-    case Qt::Key_3:
-        return kBit3;
-    case Qt::Key_4:
-        return kBit4;
-    default:
-        return 0;
-    }
-}
-
-bool HidInputRouter::handleDigitChord(int key, bool pressed, bool autoRepeat)
-{
-    const int bit = digitBit(key);
-    if (bit == 0)
+    if (!isPadKey(key))
         return false;
-    if (autoRepeat)
+    if (autoRepeat || !pressed)
         return true;
-
-    if (pressed) {
-        if (m_keyMask == 0)
-            m_gestureInPreview = m_previewMode;
-
-        m_keyMask |= bit;
-        m_gestureMask |= bit;
-
-        if (m_chordFired)
-            return true;
-
-        if ((m_keyMask & kChord1234) == kChord1234) {
-            m_chordTimer.stop();
-            m_chordFired = true;
-            emit exportToUsb();
-            return true;
-        }
-
-        if (!m_gestureInPreview) {
-            if (bit == kBit1)
-                emit captureSnapshot();
-            else if (bit == kBit2)
-                emit togglePreview();
-            else if (bit == kBit3)
-                emit toggleRecord();
-            return true;
-        }
-
-        m_chordTimer.stop();
+    if (key == Qt::Key_N) {
+        emit seekBy(10000);
         return true;
     }
 
-    m_keyMask &= ~bit;
-    if (m_keyMask != 0)
+    if (const int bit = digitBit(key)) {
+        onDigitDown(bit);
         return true;
-
-    m_chordTimer.stop();
-    if (m_gestureInPreview && !m_chordFired)
-        flushDigitChord();
-    m_gestureMask = 0;
-    m_chordFired = false;
-    m_gestureInPreview = false;
+    }
+    if (const int bit = muteBit(key)) {
+        onMuteLetter(bit);
+        return true;
+    }
+    if (const int bit = releaseBit(key)) {
+        onReleaseLetter(bit);
+        return true;
+    }
     return true;
 }
 
-void HidInputRouter::flushDigitChord()
+void HidInputRouter::onDigitDown(int bit)
 {
-    if (m_chordFired || m_gestureMask == 0)
-        return;
+    m_heldForChord |= bit;
+    fireDigitTap(bit);
+}
 
-    const int mask = m_gestureMask;
-    m_chordFired = true;
-    if (mask == kChord12)
-        emit seekBy(-10000);
-    else if (mask == kChord13)
-        emit seekBy(10000);
-    else if (mask == kBit2)
+void HidInputRouter::onMuteLetter(int bit)
+{
+    const bool digitWasHeld = (m_heldForChord & bit) != 0;
+    m_muteRelease |= bit;
+    m_heldForChord &= ~bit;
+    if (bit == kBit2 && !digitWasHeld)
+        emit goLive();
+}
+
+void HidInputRouter::onReleaseLetter(int bit)
+{
+    m_heldForChord &= ~bit;
+
+    if (m_muteRelease & bit) {
+        m_muteRelease &= ~bit;
+        return;
+    }
+
+    if (bit == kBit1)
+        emit moveCurrent(-1);
+    else if (bit == kBit3)
+        emit moveCurrent(1);
+}
+
+void HidInputRouter::fireDigitTap(int bit)
+{
+    if (bit == kBit1) {
+        if (!m_previewMode)
+            emit captureSnapshot();
+        return;
+    }
+    if (bit == kBit2) {
         emit togglePreview();
-    else
-        m_chordFired = false;
+        return;
+    }
+    if (bit == kBit3 && !m_previewMode)
+        emit toggleRecord();
 }
 
 bool HidInputRouter::handleKey(QKeyEvent *event, bool emitSignals)
@@ -251,24 +361,6 @@ bool HidInputRouter::handleKey(QKeyEvent *event, bool emitSignals)
         return true;
 
     switch (event->key()) {
-    case Qt::Key_Q:
-        if (ctrl || alt || shift)
-            return true;
-        if (emitSignals)
-            emit moveCurrent(-1);
-        return true;
-    case Qt::Key_E:
-        if (ctrl || alt || shift)
-            return true;
-        if (emitSignals)
-            emit moveCurrent(1);
-        return true;
-    case Qt::Key_S:
-        if (ctrl || alt || shift)
-            return true;
-        if (emitSignals)
-            emit goLive();
-        return true;
     case Qt::Key_F8:
     case Qt::Key_Camera:
     case Qt::Key_Print:
@@ -301,14 +393,6 @@ bool HidInputRouter::handleKey(QKeyEvent *event, bool emitSignals)
     case Qt::Key_Delete:
         if (emitSignals)
             emit deleteCurrent();
-        return true;
-    case Qt::Key_Left:
-        if (emitSignals)
-            emit seekBy(-10000);
-        return true;
-    case Qt::Key_Right:
-        if (emitSignals)
-            emit seekBy(10000);
         return true;
     default:
         return false;
