@@ -49,16 +49,35 @@ QString uniquePath(const QString &directory, const QString &baseName)
 
 bool parseDateFolder(const QString &name, QDate *date)
 {
-    static const QRegularExpression re(QStringLiteral("^(\\d{2})-(\\d{2})-(\\d{4})$"));
-    const QRegularExpressionMatch match = re.match(name);
-    if (!match.hasMatch())
+    static const QRegularExpression isoRe(QStringLiteral("^(\\d{4})-(\\d{2})-(\\d{2})$"));
+    const QRegularExpressionMatch iso = isoRe.match(name);
+    if (iso.hasMatch()) {
+        const QDate parsed(iso.captured(1).toInt(), iso.captured(2).toInt(), iso.captured(3).toInt());
+        if (!parsed.isValid())
+            return false;
+        if (date)
+            *date = parsed;
+        return true;
+    }
+
+    static const QRegularExpression legacyRe(QStringLiteral("^(\\d{2})-(\\d{2})-(\\d{4})$"));
+    const QRegularExpressionMatch legacy = legacyRe.match(name);
+    if (!legacy.hasMatch())
         return false;
-    const QDate parsed(match.captured(3).toInt(), match.captured(2).toInt(), match.captured(1).toInt());
+    const QDate parsed(legacy.captured(3).toInt(), legacy.captured(2).toInt(), legacy.captured(1).toInt());
     if (!parsed.isValid())
         return false;
     if (date)
         *date = parsed;
     return true;
+}
+
+QString timedFileName(const QString &extension)
+{
+    const QDateTime now = QDateTime::currentDateTime();
+    const QString stamp = now.toString(QStringLiteral("HH-mm-ss-"))
+        + QStringLiteral("%1").arg(now.time().msec(), 3, 10, QChar('0'));
+    return stamp + QLatin1Char('.') + extension;
 }
 
 } // namespace
@@ -82,7 +101,6 @@ RecordingManager::RecordingManager(AppSettings *settings, QObject *parent)
     });
 
     setRootDirectory(m_settings->recordingsDir());
-    purgeOldFolders();
     QTimer::singleShot(2000, this, [this]() { m_usbAnnounce = true; });
 }
 
@@ -114,6 +132,8 @@ void RecordingManager::setRootDirectory(const QString &directory)
     const QString next = QDir::cleanPath(directory);
     if (m_rootDirectory == next) {
         QDir().mkpath(m_rootDirectory);
+        if (m_sessionDirectory.isEmpty())
+            createSessionDirectory();
         return;
     }
 
@@ -127,8 +147,7 @@ void RecordingManager::setRootDirectory(const QString &directory)
     m_sessionName.clear();
     watchDirectory();
     emit rootChanged();
-    emit sessionChanged();
-    emit recordingsChanged();
+    createSessionDirectory();
 }
 
 void RecordingManager::setWriting(bool writing)
@@ -140,16 +159,14 @@ QString RecordingManager::createNewRecordingPath()
 {
     const QString dir = ensureSession();
     QDir().mkpath(dir);
-    const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd_HH-mm-ss"));
-    return uniquePath(dir, QStringLiteral("record_%1.mp4").arg(stamp));
+    return uniquePath(dir, timedFileName(QStringLiteral("mp4")));
 }
 
 QString RecordingManager::createNewCapturePath()
 {
     const QString dir = ensureSession();
     QDir().mkpath(dir);
-    const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd_HH-mm-ss"));
-    return uniquePath(dir, QStringLiteral("capture_%1.jpg").arg(stamp));
+    return uniquePath(dir, timedFileName(QStringLiteral("jpg")));
 }
 
 bool RecordingManager::removeRecording(const QString &filePath)
@@ -201,19 +218,9 @@ void RecordingManager::notifyChanged()
 
 bool RecordingManager::startNewSession()
 {
-    if (m_writing) {
-        showFlash(tr("Đang ghi hình\nKhông tạo thư mục mới"));
+    if (m_writing)
         return false;
-    }
-
-    const QString path = createSessionDirectory();
-    if (path.isEmpty()) {
-        showFlash(tr("Không tạo được thư mục bệnh nhân."));
-        return false;
-    }
-
-        showFlash(tr("Bệnh nhân mới\n%1").arg(m_sessionName));
-    return true;
+    return !createSessionDirectory().isEmpty();
 }
 
 void RecordingManager::exportToUsb()
@@ -225,7 +232,7 @@ void RecordingManager::exportToUsb()
         return;
     }
     if (!usbAvailable()) {
-        showFlash(tr("Không có USB\nCắm USB rồi nhấn 1 2 3 4"));
+        showFlash(tr("Không có USB"));
         return;
     }
 
@@ -334,7 +341,8 @@ void RecordingManager::exportToUsb()
 
 QString RecordingManager::ensureSession()
 {
-    if (!m_sessionDirectory.isEmpty() && QDir(m_sessionDirectory).exists())
+    const QString todayPath = QDir(m_rootDirectory).filePath(QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd")));
+    if (m_sessionDirectory == todayPath && QDir(m_sessionDirectory).exists())
         return m_sessionDirectory;
     return createSessionDirectory();
 }
@@ -344,34 +352,16 @@ QString RecordingManager::createSessionDirectory()
     if (m_rootDirectory.isEmpty())
         return {};
 
-    if (!m_sessionDirectory.isEmpty()) {
-        QDir old(m_sessionDirectory);
-        if (old.exists() && old.entryList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot).isEmpty())
-            old.removeRecursively();
-    }
-
-    const QDateTime now = QDateTime::currentDateTime();
-    const QString dateFolder = now.toString(QStringLiteral("dd-MM-yyyy"));
-    const QString sessionFolder = now.toString(QStringLiteral("HH-mm-ss-"))
-        + QStringLiteral("%1").arg(now.time().msec(), 3, 10, QChar('0'));
-
-    QString path = QDir(m_rootDirectory).filePath(dateFolder);
-    path = QDir(path).filePath(sessionFolder);
-    int suffix = 2;
-    while (QFileInfo::exists(path)) {
-        path = QDir(QDir(m_rootDirectory).filePath(dateFolder))
-                   .filePath(QStringLiteral("%1_%2").arg(sessionFolder).arg(suffix));
-        ++suffix;
-    }
-
+    const QString dateFolder = QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"));
+    const QString path = QDir(m_rootDirectory).filePath(dateFolder);
     if (!QDir().mkpath(path))
         return {};
 
-    if (!m_sessionDirectory.isEmpty())
+    if (!m_sessionDirectory.isEmpty() && m_sessionDirectory != path)
         m_watcher->removePath(m_sessionDirectory);
 
     m_sessionDirectory = path;
-    m_sessionName = dateFolder + QLatin1Char('/') + QFileInfo(path).fileName();
+    m_sessionName = dateFolder;
     watchDirectory();
     if (usbAvailable()) {
         const QString usbDir = usbPathForLocal(path);

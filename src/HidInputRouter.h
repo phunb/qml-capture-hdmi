@@ -34,7 +34,6 @@ signals:
     void adminExit();
     void pedalTap();
     void togglePreview();
-    void newPatientSession();
     void exportToUsb();
 
 private:

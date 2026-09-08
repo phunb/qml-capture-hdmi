@@ -55,7 +55,7 @@ Window {
     ConfirmDialog {
         id: exitDialog
         titleText: qsTr("Thoát kiosk")
-        messageText: qsTr("Thoát chế độ kiosk (bảo trì)?")
+        messageText: qsTr("Tắt app và về command line?")
         confirmText: qsTr("Thoát")
         danger: true
         onConfirmed: Kiosk.exitApp()
@@ -82,12 +82,8 @@ Window {
         target: HidInput
 
         function onToggleRecord() {
-            if (dialogOpen)
+            if (dialogOpen || liveView.previewing)
                 return
-            if (liveView.previewing) {
-                liveView.moveSelection(1)
-                return
-            }
             Capture.toggleRecording()
         }
 
@@ -101,12 +97,8 @@ Window {
                 deleteDialog.close()
                 return
             }
-            if (Recordings.copying)
+            if (Recordings.copying || liveView.previewing)
                 return
-            if (liveView.previewing) {
-                liveView.moveSelection(-1)
-                return
-            }
             Capture.captureSnapshot()
         }
 
@@ -136,12 +128,11 @@ Window {
         }
 
         function onTogglePreview() {
-            if (dialogOpen || Capture.recording)
+            if (dialogOpen)
                 return
-            if (liveView.previewing)
-                liveView.seekBy(10000)
-            else
-                liveView.enterPreview()
+            if (Capture.recording && !liveView.previewing)
+                return
+            liveView.togglePlay()
         }
 
         function onGoBack() {
@@ -203,7 +194,7 @@ Window {
             }
             if (!liveView.previewing)
                 return
-            liveView.seekBy(delta > 0 ? -10000 : 10000)
+            liveView.moveSelection(delta)
         }
 
         function onSeekBy(ms) {
@@ -221,13 +212,6 @@ Window {
         function onAdminExit() {
             exitDialog.confirmSelected = false
             exitDialog.open()
-        }
-
-        function onNewPatientSession() {
-            if (Recordings.copying)
-                return
-            liveView.exitPreview()
-            Recordings.startNewSession()
         }
 
         function onExportToUsb() {

@@ -12,7 +12,8 @@ constexpr int kBit1 = 1 << 0;
 constexpr int kBit2 = 1 << 1;
 constexpr int kBit3 = 1 << 2;
 constexpr int kBit4 = 1 << 3;
-constexpr int kChord234 = kBit2 | kBit3 | kBit4;
+constexpr int kChord12 = kBit1 | kBit2;
+constexpr int kChord13 = kBit1 | kBit3;
 constexpr int kChord1234 = kBit1 | kBit2 | kBit3 | kBit4;
 }
 
@@ -168,10 +169,6 @@ bool HidInputRouter::handleDigitChord(int key, bool pressed, bool autoRepeat)
             flushDigitChord();
             return true;
         }
-        if ((m_keyMask & kChord234) == kChord234) {
-            m_chordTimer.start();
-            return true;
-        }
         m_chordTimer.stop();
         return true;
     }
@@ -200,24 +197,19 @@ void HidInputRouter::flushDigitChord()
         emit exportToUsb();
         return;
     }
-    if ((mask & kChord234) == kChord234) {
-        m_chordFired = true;
-        emit newPatientSession();
-        return;
-    }
 
     if (m_keyMask != 0)
         return;
 
     m_chordFired = true;
-    if ((mask & (kBit3 | kBit4)) == (kBit3 | kBit4))
-        emit goLive();
-    else if (mask == kBit4)
-        emit togglePreview();
+    if (mask == kChord12)
+        emit seekBy(-10000);
+    else if (mask == kChord13)
+        emit seekBy(10000);
     else if (mask == kBit3)
-        emit moveCurrent(1);
-    else if (mask == kBit2)
         emit toggleRecord();
+    else if (mask == kBit2)
+        emit togglePreview();
     else if (mask == kBit1)
         emit captureSnapshot();
     else
@@ -244,7 +236,24 @@ bool HidInputRouter::handleKey(QKeyEvent *event, bool emitSignals)
         return true;
 
     switch (event->key()) {
+    case Qt::Key_Q:
+        if (ctrl || alt || shift)
+            return true;
+        if (emitSignals)
+            emit moveCurrent(-1);
+        return true;
+    case Qt::Key_E:
+        if (ctrl || alt || shift)
+            return true;
+        if (emitSignals)
+            emit moveCurrent(1);
+        return true;
     case Qt::Key_S:
+        if (ctrl || alt || shift)
+            return true;
+        if (emitSignals)
+            emit goLive();
+        return true;
     case Qt::Key_F8:
     case Qt::Key_Camera:
     case Qt::Key_Print:
