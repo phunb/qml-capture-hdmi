@@ -47,6 +47,7 @@ qt_add_qml_module(hdmi-kiosk
         qml/NoSignalOverlay.qml
         qml/ClipPreview.qml
         qml/CopyProgressOverlay.qml
+        qml/PreviewUsbCopyBar.qml
         qml/KioskToast.qml
     SOURCES
         src/AppSettings.h

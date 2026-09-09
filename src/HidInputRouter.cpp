@@ -397,6 +397,10 @@ bool HidInputRouter::handleKey(QKeyEvent *event, bool emitSignals)
         if (emitSignals)
             emit deleteCurrent();
         return true;
+    case Qt::Key_P:
+        if (emitSignals && m_previewMode)
+            emit exportToUsb();
+        return m_previewMode;
     default:
         return false;
     }

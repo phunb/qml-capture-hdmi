@@ -527,6 +527,7 @@ Item {
         crop: !root.previewing
         autoPlay: root.previewing && Library.count > 0 && !Library.currentIsFolder && !Library.currentIsImage
         muted: !root.previewing
+        showUsbCopyPanel: root.previewing && lastClip.parent === clipMainSlot
     }
 
     states: State {

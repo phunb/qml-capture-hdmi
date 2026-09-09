@@ -14,8 +14,12 @@ Item {
     property bool finished: false
 
     property bool playIconVisible: false
+    property bool showUsbCopyPanel: false
 
     readonly property bool hasSource: String(source).length > 0
+    readonly property int usbCopyBarHeight: showUsbCopyPanel && usbCopyBar.active ? usbCopyBar.height : 0
+    readonly property int transportHeight: root.showTransport ? 52 : 0
+    readonly property int bottomChrome: usbCopyBarHeight + transportHeight
     readonly property bool playing: player.playbackState === MediaPlayer.PlayingState
     readonly property bool atEnd: player.mediaStatus === MediaPlayer.EndOfMedia
             || (player.duration > 0 && player.position >= player.duration - 80)
@@ -109,6 +113,7 @@ Item {
     Item {
         id: imageViewport
         anchors.fill: parent
+        anchors.bottomMargin: root.bottomChrome
         clip: true
         visible: root.isImage && root.hasSource
 
@@ -131,7 +136,7 @@ Item {
     VideoOutput {
         id: videoOut
         anchors.fill: parent
-        anchors.bottomMargin: root.showTransport ? 52 : 0
+        anchors.bottomMargin: root.bottomChrome
         visible: !root.isImage && root.hasSource
         fillMode: root.crop ? VideoOutput.PreserveAspectCrop : VideoOutput.PreserveAspectFit
     }
@@ -218,13 +223,23 @@ Item {
         }
     }
 
+    PreviewUsbCopyBar {
+        id: usbCopyBar
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        visible: root.showUsbCopyPanel
+        z: 4
+    }
+
     Rectangle {
         visible: root.showTransport
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.bottom: parent.bottom
+        anchors.bottom: usbCopyBar.visible ? usbCopyBar.top : parent.bottom
         height: 52
         color: Theme.overlay
+        z: 3
 
         Text {
             id: playGlyph

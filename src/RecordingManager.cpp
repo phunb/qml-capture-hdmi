@@ -232,21 +232,43 @@ void RecordingManager::exportToUsb()
         return;
     }
     if (!usbAvailable()) {
-        showFlash(tr("Không có USB"));
+        m_copyError = true;
+        m_copyProgress = 0;
+        setCopyMessage(tr("Chưa có USB"));
+        emit copyErrorChanged();
+        emit copyProgressChanged();
+        QTimer::singleShot(4000, this, [this]() {
+            if (!m_copying) {
+                m_copyError = false;
+                setCopyMessage(QString());
+                emit copyErrorChanged();
+            }
+        });
         return;
     }
 
     const QString srcRoot = m_rootDirectory;
     const QString dstRoot = m_settings->usbOutputDir();
     if (srcRoot.isEmpty() || dstRoot.isEmpty() || !QDir(srcRoot).exists()) {
-        showFlash(tr("Không có dữ liệu để chép"));
+        m_copyError = true;
+        m_copyProgress = 0;
+        setCopyMessage(tr("Không có dữ liệu để chép"));
+        emit copyErrorChanged();
+        emit copyProgressChanged();
+        QTimer::singleShot(4000, this, [this]() {
+            if (!m_copying) {
+                m_copyError = false;
+                setCopyMessage(QString());
+                emit copyErrorChanged();
+            }
+        });
         return;
     }
 
     m_copying = true;
     m_copyError = false;
     m_copyProgress = 0;
-    setCopyMessage(tr("Đang chép sang USB"));
+    setCopyMessage(tr("Đang copy sang USB"));
     emit copyingChanged();
     emit copyErrorChanged();
     emit copyProgressChanged();
@@ -313,12 +335,20 @@ void RecordingManager::exportToUsb()
         }
 
         QMetaObject::invokeMethod(this, [this]() {
-            setCopyMessage(tr("Đang chép sang USB"));
+            setCopyMessage(tr("Đang copy sang USB"));
         }, Qt::QueuedConnection);
 
         for (const CopyFile &file : pending) {
             QDir().mkpath(QFileInfo(file.destination).absolutePath());
-            if (!copyFileSkippingExisting(file, &copiedBytes, [&]() { report(copiedBytes); })) {
+            const CopyFileResult result =
+                copyFileSkippingExisting(file, &copiedBytes, [&]() { report(copiedBytes); });
+            if (result == CopyFileResult::DiskFull) {
+                QMetaObject::invokeMethod(this, [this]() {
+                    finishCopy(false, tr("USB đã đầy, không tiếp tục thực hiện được"));
+                }, Qt::QueuedConnection);
+                return;
+            }
+            if (result == CopyFileResult::Failed) {
                 QMetaObject::invokeMethod(this, [this]() {
                     finishCopy(false, tr("Lỗi khi chép USB"));
                 }, Qt::QueuedConnection);
@@ -328,7 +358,7 @@ void RecordingManager::exportToUsb()
         }
 
         QMetaObject::invokeMethod(this, [this]() {
-            finishCopy(true, tr("Đã chép xong"));
+            finishCopy(true, tr("Đã copy xong"));
         }, Qt::QueuedConnection);
     });
 
@@ -491,39 +521,59 @@ void RecordingManager::finishCopy(bool ok, const QString &message)
     });
 }
 
-bool RecordingManager::copyFileSkippingExisting(const CopyFile &file, qint64 *copiedBytes,
-                                               const std::function<void()> &onProgress)
+RecordingManager::CopyFileResult RecordingManager::copyFileSkippingExisting(
+    const CopyFile &file, qint64 *copiedBytes, const std::function<void()> &onProgress)
 {
     if (QFileInfo::exists(file.destination)) {
         if (copiedBytes)
             *copiedBytes += file.size;
         if (onProgress)
             onProgress();
-        return true;
+        return CopyFileResult::SkippedExisting;
+    }
+
+    const QString destDir = QFileInfo(file.destination).absolutePath();
+    QStorageInfo destStorage = storageFor(destDir);
+    destStorage.refresh();
+    if (destStorage.isValid() && destStorage.isReady()
+        && destStorage.bytesAvailable() < file.size + 65536) {
+        return CopyFileResult::DiskFull;
     }
 
     QFile in(file.source);
     if (!in.open(QIODevice::ReadOnly))
-        return false;
+        return CopyFileResult::Failed;
 
     QFile out(file.destination);
-    if (!out.open(QIODevice::WriteOnly | QIODevice::Truncate))
-        return false;
+    if (!out.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        destStorage.refresh();
+        if (destStorage.isValid() && destStorage.isReady() && destStorage.bytesAvailable() < 65536)
+            return CopyFileResult::DiskFull;
+        return CopyFileResult::Failed;
+    }
 
     char buffer[256 * 1024];
     while (!in.atEnd()) {
         const qint64 n = in.read(buffer, sizeof(buffer));
-        if (n < 0 || out.write(buffer, n) != n) {
+        if (n < 0) {
             out.close();
             QFile::remove(file.destination);
-            return false;
+            return CopyFileResult::Failed;
+        }
+        if (out.write(buffer, n) != n) {
+            out.close();
+            QFile::remove(file.destination);
+            destStorage.refresh();
+            if (destStorage.isValid() && destStorage.isReady() && destStorage.bytesAvailable() < 65536)
+                return CopyFileResult::DiskFull;
+            return CopyFileResult::Failed;
         }
         if (copiedBytes)
             *copiedBytes += n;
         if (onProgress)
             onProgress();
     }
-    return true;
+    return CopyFileResult::Ok;
 }
 
 bool RecordingManager::copyFileAtomic(const QString &source, const QString &destination)
@@ -540,7 +590,8 @@ bool RecordingManager::copyFileAtomic(const QString &source, const QString &dest
     file.destination = tempPath;
     file.size = QFileInfo(source).size();
     qint64 copied = 0;
-    if (!copyFileSkippingExisting(file, &copied)) {
+    const CopyFileResult copiedResult = copyFileSkippingExisting(file, &copied);
+    if (copiedResult == CopyFileResult::Failed || copiedResult == CopyFileResult::DiskFull) {
         QFile::remove(tempPath);
         return false;
     }

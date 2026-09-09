@@ -12,6 +12,8 @@ function Resolve-KioskExe {
     }
 
     $candidates = @(
+        Join-Path $PSScriptRoot "hdmi-kiosk.exe"
+        Join-Path $PSScriptRoot "..\..\build\windows\hdmi-kiosk.exe"
         Join-Path $PSScriptRoot "..\..\build\hdmi-kiosk.exe"
         Join-Path $PSScriptRoot "..\..\build\Release\hdmi-kiosk.exe"
         Join-Path $PSScriptRoot "..\..\build\RelWithDebInfo\hdmi-kiosk.exe"

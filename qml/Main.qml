@@ -71,6 +71,7 @@ Window {
 
     CopyProgressOverlay {
         anchors.fill: parent
+        visible: active && !liveView.previewing
     }
 
     KioskToast {
@@ -221,7 +222,7 @@ Window {
         }
 
         function onExportToUsb() {
-            if (deleteDialog.opened || exitDialog.opened)
+            if (deleteDialog.opened || exitDialog.opened || Recordings.copying)
                 return
             Recordings.exportToUsb()
         }

@@ -1,0 +1,14 @@
+HDMI Kiosk — bộ chạy Windows offline
+Không cần mạng, không cần cài Qt trên máy đích.
+
+Cách 1 — chạy luôn (USB / copy cả folder):
+  Mở folder này, chạy hdmi-kiosk.exe
+
+Cách 2 — cài vào máy:
+  Chạy hdmi-kiosk-setup.exe
+  App được copy vào %LOCALAPPDATA%\HdmiKiosk
+  Tạo shortcut Desktop và tự chạy khi đăng nhập Windows
+
+Thoát kiosk (bảo trì): Ctrl+Alt+Shift+Q
+
+Ghi chú: copy CẢ folder (exe + DLL + plugins + qml). Không chỉ copy một file exe.

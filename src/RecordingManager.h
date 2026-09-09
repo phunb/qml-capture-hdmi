@@ -79,8 +79,10 @@ private:
     void setCopyMessage(const QString &message);
     void finishCopy(bool ok, const QString &message);
     QString usbPathForLocal(const QString &localFilePath) const;
-    static bool copyFileSkippingExisting(const CopyFile &file, qint64 *copiedBytes,
-                                        const std::function<void()> &onProgress = {});
+    enum class CopyFileResult { Ok, SkippedExisting, DiskFull, Failed };
+
+    static CopyFileResult copyFileSkippingExisting(const CopyFile &file, qint64 *copiedBytes,
+                                                   const std::function<void()> &onProgress = {});
     static bool copyFileAtomic(const QString &source, const QString &destination);
 
     AppSettings *m_settings = nullptr;
